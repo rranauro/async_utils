@@ -366,7 +366,6 @@ var readRequest = function( settings, options) {
 	
 	that.reset = function() {
 		_collection.reset();
-		global.gc();
 		return this;		
 	};
 	
