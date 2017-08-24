@@ -1,24 +1,24 @@
 {
-  "name": "connect_wrapper",
-  "version": "1.0.1",
-  "description": "Simple methods for handling connections to remote mongodb installation",
+  "name": "async_utils",
+  "version": "0.0.1",
+  "description": "Batch/pipeline utilities based on Async",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rranauro/connect_wrapper.git"
+    "url": "git+https://github.com/rranauro/async_utils.git"
   },
   "keywords": [
-    "MongoDB"
+    "Async", "Workflow"
   ],
   "author": "Ron Ranauro",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/rranauro/connect_wrapper/issues"
+    "url": "https://github.com/rranauro/async_utils/issues"
   },
-  "homepage": "https://github.com/rranauro/connect_wrapper#readme",
+  "homepage": "https://github.com/rranauro/async_utils#readme",
   "dependencies": {
       "async": "1.x",
 	  "base-utils": "https://github.com/rranauro/base-utils.git",
