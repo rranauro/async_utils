@@ -169,7 +169,7 @@ var bulk = function( op ) {
 				if (op == 'update' && _.isFunction(transform)) {
 					data = transform( data );
 				}
-				exports.bulkSave(settings.getHostInfo())(data, arguments[arguments.length-1]);
+				exports.bulkSave(settings)(data, arguments[arguments.length-1]);
 			}
 		], function(err) {
 			console.log('Remove done', !err ? 'success' : err);
