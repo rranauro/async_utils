@@ -140,8 +140,6 @@ exports.cleanDoc = function(doc) {
 
 var bulk = function( op ) {
 	return function(settings, _view, transform) {
-		var db = settings.getHostInfo('db');
-		var _ddoc = settings.getHostInfo('ddoc');
 		var callback = arguments[arguments.length-1];
 
 		async.waterfall([
@@ -149,7 +147,7 @@ var bulk = function( op ) {
 			function(callback) {
 			
 				// query the view and get _id/_rev info
-				_request(settings.getHostInfo()).get('_design/lifescience/_list/alldocs/collections', {
+				_request({db: settings.db}).get('_design/lifescience/_list/alldocs/collections', {
 					query: {
 						reduce: false, 
 						collection: _view, 
