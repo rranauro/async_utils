@@ -338,8 +338,10 @@ var readRequest = function( settings, options) {
 						console.log(_.sprintf('[pipeline] warning: error: "%s", reason: "%s"', this.error, this.reason || this.error));
 					}
 				}				
+				return callback(); 					
+				
 			}
-			callback({error: 'read_failed', reason: 'missing_body'}); 					
+			callback(null, {error: 'read_failed', reason: 'missing_body'}); 					
 		}, this));
 	};
 	
@@ -423,7 +425,11 @@ var pipeline = function(settings) {
 		// Each chunk runs serially internally
 		async.each(chunks, function(job, finish) {
 			_.wait(Math.random(), function() { thread( job, finish); });
-		}, function(err) {
+		}, function(err, response) {
+			if (response && response.error) {
+				console.log('[pipeline] warning:', response.errror, response.reason);
+				err = _.pick(response, 'error', 'reason');
+			}
 			options.callback(err, options);
 		}); 
 	};
