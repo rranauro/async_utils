@@ -42,7 +42,7 @@ exports.bulkSave = function(settings, options) {
 				body: { docs: json.slice(start, start + 1000) }
 			}, function(err, response) {					
 				var errors;
-				total_docs += (_.where(response.body, {ok: true})).length;
+				total_docs += (_.where((response && response.body || []), {ok: true})).length;
 				if (err || !options.silent) {
 					errors = _.chain(response.body)
 					.groupBy(function(doc) { return doc.reason ? doc.reason : 'ok' })
@@ -140,6 +140,8 @@ exports.cleanDoc = function(doc) {
 
 var bulk = function( op ) {
 	return function(settings, _view, transform) {
+		var db = settings.getHostInfo('db');
+		var _ddoc = settings.getHostInfo('ddoc');
 		var callback = arguments[arguments.length-1];
 
 		async.waterfall([
@@ -147,7 +149,7 @@ var bulk = function( op ) {
 			function(callback) {
 			
 				// query the view and get _id/_rev info
-				_request({db: settings.db}).get('_design/lifescience/_list/alldocs/collections', {
+				_request(settings.getHostInfo()).get('_design/lifescience/_list/alldocs/collections', {
 					query: {
 						reduce: false, 
 						collection: _view, 
@@ -169,7 +171,7 @@ var bulk = function( op ) {
 				if (op == 'update' && _.isFunction(transform)) {
 					data = transform( data );
 				}
-				exports.bulkSave(settings)(data, arguments[arguments.length-1]);
+				exports.bulkSave(settings.getHostInfo())(data, arguments[arguments.length-1]);
 			}
 		], function(err) {
 			console.log('Remove done', !err ? 'success' : err);
@@ -287,7 +289,8 @@ var readRequest = function( settings, options) {
 	, id = _.uniqueId('thread')
 	, _collection = pipelineCollection( settings, options )
 	, read = function(callback, count) {
-	
+		let self = this;
+		
 		request({
 			url: this.url,
 			json: true,
@@ -295,7 +298,7 @@ var readRequest = function( settings, options) {
 			body: this.method === 'POST' ? this.body : undefined,
 			headers: this.headers
 		}, _.bind(function(err, response) {
-			
+		
 			if (err) {
 				if (response && response.statusCode && response.statusCode === 404) {
 					console.log(_.sprintf('[%s] error: "%s"', id, response.statusMessage));
@@ -305,31 +308,38 @@ var readRequest = function( settings, options) {
 					console.log(_.sprintf('[%s] error: "%s"', id, err.message));
 					return callback();
 				}
-	
+				callback(err);
+			}
+			
+			// Service Unavailable, Too Many Connections
+			if (response && response.statusCode === 503) {
 				if (count === 10) {
 					console.log(_.sprintf('[%s] error: "too many retries"', id));
-					return callback();
+					return callback({error: 'read_failed', reason: 'too_many_retries'});
 				}
 	
 				return _.wait((0.25 * count || 1), function() {
-					console.log(_.sprintf('[%s] fetch error: %s, %s, retries (%d)', 
-						id, response.statusMessage || response.statusCode, this.id, count || 1));
-					read.call(this, callback, count ? count + 1 : 2);
+					console.log(_.sprintf('[%s] fetch error: %s, retries (%d)', 
+						id, response.statusMessage || response.statusCode, count || 1));
+					read.call(self, callback, count ? count + 1 : 2);
 				});
 			}
-
-			// parse the results
-			this.parse( response.body );
+			
+			if (response && response.body) {
+				
+				// parse the results
+				this.parse( response.body );
 		
-			if (_.result(this, 'ok')) {
-				_collection.add( this.toJSON() );
-				this.destroy()
-			} else {
-				if (this.error) {
-					console.log(_.sprintf('[pipeline] warning: error: "%s", reason: "%s"', this.error, this.reason || this.error));
-				}
+				if (_.result(this, 'ok')) {
+					_collection.add( this.toJSON() );
+					this.destroy()
+				} else {
+					if (this.error) {
+						console.log(_.sprintf('[pipeline] warning: error: "%s", reason: "%s"', this.error, this.reason || this.error));
+					}
+				}				
 			}
-			callback(); 					
+			callback({error: 'read_failed', reason: 'missing_body'}); 					
 		}, this));
 	};
 	
