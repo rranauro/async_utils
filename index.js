@@ -452,14 +452,14 @@ var readRequest = function( settings, options, collection) {
 		if (options.request_timer) {
 			console.time(this.url);
 		}
-		request({
+		request(_.clean({
 			url: this.url,
 			json: true,
 			method: this.method || 'GET',
 			body: this.method === 'POST' ? this.body : undefined,
-			timeout: options.source && options.source.timeout,
+			timeout: options.timeout,
 			headers: this.headers
-		}, _.bind(function(err, response) {
+		}), _.bind(function(err, response) {
 		
 			if (options.request_timer) {
 				console.timeEnd(this.url);
