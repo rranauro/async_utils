@@ -440,5 +440,202 @@ var pipeline = function(settings) {
 		go: go
 	});
 };
+
+var readRequest = function( settings, options, collection) {
+	var that = {} 
+	, totalSaved = 0
+	, id = _.uniqueId()
+	, timer = exports.timeStamp().start(id)
+	, read = function(callback, count) {
+		let self = this;
+		
+		request({
+			url: this.url,
+			json: true,
+			method: this.method || 'GET',
+			body: this.method === 'POST' ? this.body : undefined,
+			headers: this.headers
+		}, _.bind(function(err, response) {
+		
+			if (err) {
+				if (response && response.statusCode && response.statusCode === 404) {
+					console.log(_.sprintf('[%s] error: "%s"', id, response.statusMessage));
+					return callback();
+				}
+				if (!response) {
+					console.log(_.sprintf('[%s] error: "%s"', id, err.message));
+					return callback();
+				}
+				callback(err);
+			}
+			
+			// Service Unavailable, Too Many Connections
+			if (response && response.statusCode === 503) {
+				if (count === 10) {
+					console.log(_.sprintf('[%s] error: "too many retries"', id));
+					return callback({error: 'read_failed', reason: 'too_many_retries'});
+				}
+	
+				return _.wait((0.25 * count || 1), function() {
+					console.log(_.sprintf('[%s] fetch error: %s, retries (%d)', 
+						id, response.statusMessage || response.statusCode, count || 1));
+					read.call(self, callback, count ? count + 1 : 2);
+				});
+			}
+			
+			if (response && response.body) {
+				
+				// parse the results
+				return callback(null, this.parse( response.body ) );
+			}
+			callback(null, {error: 'read_failed', reason: 'missing_body'}); 					
+		}, this));
+	};
+	
+	that.read = function(query, callback) {
+		query = _.defaults(query || {}, {
+			parse: function(data) {
+				this.attributes = data;
+				return this.attributes;
+			},
+			toJSON: function() {
+				return this.attributes;
+			},
+			ok: true,
+			collection: this.collection,
+			destroy: _.bind(function() {
+				_.each(['ok','parse', 'attributes', 'toJSON', 'url'], function(key) {
+					delete this[key];
+				}, this);
+			}, query)
+		});
+		
+		let onRead = _.bind(function() {
+			if (_.result(query, 'ok')) {
+				this.add( query.toJSON() );
+				query.destroy()
+				callback.apply(this);
+			}
+		}, this);
+		
+		if (_.isFunction(query.read)) {
+			query.read.call(query, onRead);
+		} else {
+			read.call(query, onRead);
+		}
+		return this;		
+	};
+	
+	that.collection = collection;
+	that.processed = collection.slice(0);
+	that.add = function( obj ) {
+		obj = _.isArray(obj) ? obj : [ obj ];
+		this.collection = this.collection.concat( obj );
+		return this;		
+	};
+	
+	that.reset = function() {
+		this.processed = this.processed.concat( this.collection );
+		this.collection.length = 0;
+	};
+	
+	that.toJSON = function() {
+		return this.collection.slice(0);
+	};
+	
+	that.ok = function() {
+		return !!this.collection.length;
+	};
+	
+	that.bulkReady = function() {
+		return (this.ok() && this.collection.length >= options.bucketSize)
+	};
+	
+	that.save = function(docs, callback) {
+		if (this.ok()) {
+			totalSaved += this.collection.length;
+			console.log( _.template(this.message_template)({
+				module: options.module || 'pipeline',
+				id: id,
+				saving: this.length,
+				total_saved: totalSaved,
+				elapsed: timer.time( id ),
+				docs_per_second: Math.round(totalSaved/(timer.time( id ))).toFixed(2),
+				memory: _.memory()
+			}) );
+		
+			// save the models;
+			return exports.bulkSave(settings, {silent: true})(docs, callback);
+		} 
+		callback(null, {message: 'nothing_to_save'});
+	}
+	that.message_template = '[ pipeline ] [thread <%= id %>] Bulk saving (<%= saving %>), total saved (<%= total_saved %>), elapsed (<%= elapsed %>), docs/s (<%= docs_per_second %>), memory (<%= memory %>)';
+
+	// allow the user to inject these methods on the drain;
+	that.save = options && options.drain && options.drain.save || that.save;
+	that.context = options;
+	return that;
+};
+
+
+var pipeline = function(settings) {
+	
+	var go = function(options) {
+		var threads
+		, chunks
+		, queue
+		, collection = [];
+		
+		options = _.defaults(options, {
+			source: readRequest,
+			threads: 1,
+			bucketSize: 1,
+			callback: function(){}
+		})
+		
+		var readReq = options.source( settings, options, collection )
+		var handleOne = function(query, callback) {
+			
+			// we re-use the same reqRequest / collection over and over for each operation on this thread.
+			// that way, we recycle memory without generating new collections every time.
+			readReq.read(query, function() {
+				let docs;
+				
+				if (this.bulkReady()) {
+					docs = this.toJSON();
+					this.reset();
+					return readReq.save(docs, callback);
+				}
+				callback();
+			});
+		};
+		
+		queue = async.queue( handleOne, threads );
+		queue.drain = function() {
+			readReq.save( readReq.toJSON(), function() {
+				readReq.reset();
+				options.callback(null, readReq);
+			});
+		};
+		
+		options.queries.forEach(function(query) {
+			queue.push( query, function(err, response) {
+				if (response && response.error) {
+					console.log('[pipeline] warning:', response.errror, response.reason);
+					err = _.pick(response, 'error', 'reason');
+					
+				}
+			});
+		});
+	};
+	
+	return({
+		drain: pipelineCollection,
+		source: readRequest,
+		go: go
+	});
+};
+
+
 exports.pipeline = pipeline;
 
