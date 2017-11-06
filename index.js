@@ -552,7 +552,7 @@ var readRequest = function( settings, options, collection) {
 	};
 	
 	that.save = function(docs, callback) {
-		if (this.ok()) {
+		if (docs.length) {
 			totalSaved += this.collection.length;
 			console.log( _.template(this.message_template)({
 				module: options.module || 'pipeline',
