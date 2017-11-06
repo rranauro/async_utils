@@ -449,6 +449,9 @@ var readRequest = function( settings, options, collection) {
 	, read = function(callback, count) {
 		let self = this;
 		
+		if (options.request_timer) {
+			console.time(this.url);
+		}
 		request({
 			url: this.url,
 			json: true,
@@ -457,6 +460,10 @@ var readRequest = function( settings, options, collection) {
 			headers: this.headers
 		}, _.bind(function(err, response) {
 		
+			if (options.request_timer) {
+				console.timeEnd(this.url);
+			}
+			
 			if (err) {
 				if (response && response.statusCode && response.statusCode === 404) {
 					console.log(_.sprintf('[%s] error: "%s"', id, response.statusMessage));
@@ -535,7 +542,11 @@ var readRequest = function( settings, options, collection) {
 	};
 	
 	that.reset = function() {
-		this.processed = this.processed.concat( this.collection );
+		this.processed = this.processed.concat( this.collection
+			.filter(function(doc) { return typeof doc === 'object'; 
+		}).map(function(doc) {
+			return _.pick(doc, '_id', 'parseError');
+		}) );
 		this.collection.length = 0;
 	};
 	
@@ -552,12 +563,14 @@ var readRequest = function( settings, options, collection) {
 	};
 	
 	that.save = function(docs, callback) {
+		self = this;
+		
 		if (docs.length) {
-			totalSaved += this.collection.length;
+			totalSaved += docs.length;
 			console.log( _.template(this.message_template)({
 				module: options.module || 'pipeline',
 				id: id,
-				saving: this.length,
+				saving: docs.length,
 				total_saved: totalSaved,
 				elapsed: timer.time( id ),
 				docs_per_second: Math.round(totalSaved/(timer.time( id ))).toFixed(2),
@@ -565,7 +578,10 @@ var readRequest = function( settings, options, collection) {
 			}) );
 		
 			// save the models;
-			return exports.bulkSave(settings, {silent: true})(docs, callback);
+			return exports.bulkSave(settings, {silent: true})(docs, function() {
+				self.onSave( docs );
+				callback();
+			});
 		} 
 		callback(null, {message: 'nothing_to_save'});
 	}
@@ -573,6 +589,7 @@ var readRequest = function( settings, options, collection) {
 
 	// allow the user to inject these methods on the drain;
 	that.save = options && options.drain && options.drain.save || that.save;
+	that.onSave = options && options.drain && options.drain.onSave || function(){};
 	that.context = options;
 	return that;
 };
