@@ -457,6 +457,7 @@ var readRequest = function( settings, options, collection) {
 			json: true,
 			method: this.method || 'GET',
 			body: this.method === 'POST' ? this.body : undefined,
+			timeout: options.source && options.source.timeout,
 			headers: this.headers
 		}, _.bind(function(err, response) {
 		
@@ -517,12 +518,12 @@ var readRequest = function( settings, options, collection) {
 			}, query)
 		});
 		
-		let onRead = _.bind(function() {
-			if (_.result(query, 'ok')) {
+		let onRead = _.bind(function(err, response) {
+			if (response && !response.error && _.result(query, 'ok')) {
 				this.add( query.toJSON() );
 				query.destroy()
-				callback.apply(this);
 			}
+			callback.apply(this);
 		}, this);
 		
 		if (_.isFunction(query.read)) {
