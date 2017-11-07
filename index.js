@@ -512,7 +512,7 @@ var readRequest = function( settings, options, collection) {
 			ok: true,
 			collection: this.collection,
 			destroy: _.bind(function() {
-				_.each(['ok','parse', 'attributes', 'toJSON', 'url'], function(key) {
+				_.each(['ok','parse', 'attributes', 'toJSON', 'url', 'collection', 'destroy'], function(key) {
 					delete this[key];
 				}, this);
 			}, query)
