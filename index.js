@@ -44,7 +44,7 @@ exports.bulkSave = function(settings, options) {
 				var errors;
 				total_docs += (_.where((response && response.body || []), {ok: true})).length;
 				if (err || !options.silent) {
-					errors = _.chain(response.body)
+					errors = _.chain(response && response.body || [])
 					.groupBy(function(doc) { return doc.reason ? doc.reason : 'ok' })
 					.map(function(values, group) {
 						return({error: values[0].error, reason: group, count: values.length});
@@ -468,13 +468,13 @@ var readRequest = function( settings, options, collection) {
 			if (err) {
 				if (response && response.statusCode && response.statusCode === 404) {
 					console.log(_.sprintf('[%s] error: "%s"', id, response.statusMessage));
-					return callback();
+					return callback(null, {error: 404, reason: response.statusMessage});
 				}
 				if (!response) {
 					console.log(_.sprintf('[%s] error: "%s"', id, err.message));
-					return callback();
+					return callback(null, {error:'empty_response', reason: err.message || 'empty_response'});
 				}
-				callback(err);
+				callback(null, err);
 			}
 			
 			// Service Unavailable, Too Many Connections
@@ -580,6 +580,7 @@ var readRequest = function( settings, options, collection) {
 		
 			// save the models;
 			return exports.bulkSave(settings, {silent: true})(docs, function() {
+				if (!options.processed) self.processed.length = 0; 
 				self.onSave( docs );
 				callback();
 			});
