@@ -512,7 +512,7 @@ var readRequest = function( settings, options, collection) {
 			ok: true,
 			collection: this.collection,
 			destroy: _.bind(function() {
-				_.each(['ok','parse', 'attributes', 'toJSON', 'url', 'collection', 'destroy'], function(key) {
+				_.each(['ok','parse', 'attributes', 'toJSON', 'url'], function(key) {
 					delete this[key];
 				}, this);
 			}, query)
@@ -603,7 +603,8 @@ var pipeline = function(settings) {
 		var threads
 		, chunks
 		, queue
-		, collection = [];
+		, collection = []
+		, jobs = 0;
 		
 		options = _.defaults(options, {
 			source: readRequest,
@@ -620,6 +621,8 @@ var pipeline = function(settings) {
 			readReq.read(query, function() {
 				let docs;
 				
+				jobs += 1;
+				if (options.job_status && !(jobs % 100)) console.log('[pipeline] info: jobs completed', jobs);
 				if (this.bulkReady()) {
 					docs = this.toJSON();
 					this.reset();
