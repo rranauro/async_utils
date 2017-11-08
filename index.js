@@ -156,6 +156,17 @@ var bulk = function( op ) {
 		var db = settings.getHostInfo('db');
 		var _ddoc = settings.getHostInfo('ddoc');
 		var callback = arguments[arguments.length-1];
+		var docs;
+		
+		if (op === 'update' && _.isArray(_collection)) {
+			docs = _.reduce(_collection, function(result, doc) {
+				if (typeof doc === 'object' && doc._id) {
+					result[doc._id] = doc;
+				}
+				return result;
+			}, docs);
+			_collection = _.keys(docs);
+		}
 
 		async.waterfall([
 		
@@ -188,17 +199,29 @@ var bulk = function( op ) {
 				}
 				
 				if (data && data.rows) {
-					data = data.rows.map(function(row) {
-						return {_id: row.id, _rev: row.value.rev, _deleted: true};
-					});
+					if (op === 'remove') {
+						data = data.rows.map(function(row) {
+							return {_id: row.id, _rev: row.value.rev, _deleted: true};
+						});
+					} else {
+						
+						// create or update
+						data = data.rows.map(function(row) {
+							let doc = docs[row.key];
+							if (row.value && row.value.rev) {
+								doc._rev = row.value.rev;
+							}
+							return doc;
+						});
+					}
 				}
 			
 				if (op == 'remove') console.log('Removing', data.length);
 				if (op == 'update') console.log('Updating', data.length);
-				if (op == 'update' && _.isFunction(transform)) {
+				if (op == 'update' && _.isFunction(transform) && transform !== callback) {
 					data = transform( data );
 				}
-				exports.bulkSave(settings.getHostInfo())(data, arguments[arguments.length-1]);
+				exports.bulkSave(settings.getHostInfo())(data, callback);
 			}
 		], function(err) {
 			console.log('Remove done', !err ? 'success' : err);
