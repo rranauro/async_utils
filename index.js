@@ -305,7 +305,7 @@ var readRequest = function( settings, options, collection) {
 			if (response && response.body) {
 				
 				// parse the results
-				return callback(null, this.parse( response.body ) );
+				return callback(null, this.parse( response.body, options ) );
 			}
 			callback(null, {error: 'read_failed', reason: 'missing_body'}); 					
 		}, this));
@@ -349,6 +349,10 @@ var readRequest = function( settings, options, collection) {
 	that.processed = collection.slice(0);
 	that.add = function( obj ) {
 		obj = _.isArray(obj) ? obj : [ obj ];
+		
+		// filter elements with no keys
+		obj = obj.filter(function(doc) { return _.keys(doc).length; });
+		
 		this.collection = this.collection.concat( obj );
 		return this;		
 	};
