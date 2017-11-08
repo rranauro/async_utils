@@ -164,16 +164,15 @@ var bulk = function( op ) {
 					result[doc._id] = doc;
 				}
 				return result;
-			}, docs);
+			}, {});
 			_collection = _.keys(docs);
 		}
 
 		async.waterfall([
 		
-			// index query using "collections" _view; or keyed using _all_docs
+			// index query using "collection" _view; or keyed using _all_docs
 			function(callback) {
 				let url = _.isArray(_collection) ? '_all_docs' : '_design/lifescience/_list/alldocs/collections';
-				let method = _.isArray(_collection) ? 'post' : 'get';
 				let query = _.isArray(_collection)
 				? undefined
 				: {
@@ -182,12 +181,31 @@ var bulk = function( op ) {
 					startkey: JSON.stringify([_collection]), 
 					endkey: JSON.stringify([_collection,{}])
 				};
-			
-				// query the view and get _id/_rev info
-				_request(settings.getHostInfo())[method](url, _.clean({
-					query: query, 
-					body: _.isArray(_collection) ? {keys: _collection} : undefined
-				}), callback);
+				
+				if (_.isArray(_collection)) {
+					async.mapLimit(_.range(0, _collection.length, 10000), 1, function(start, next) {
+						
+						// query the view and get _id/_rev info
+						_request(settings.getHostInfo()).post(url, _.clean({
+							body: {keys: _collection.slice(start, start + 10000)}
+						}), function(err, response) {
+							console.log('[util] info:', response && response.rows && response.rows.length || 'no_response');
+							next(err, response && response.rows && response.rows.slice(0))
+						});
+						
+					}, function(err, docs) {
+						callback(err, _.flatten(docs));
+					});
+					
+				} else {
+					
+					// query the view and get _id/_rev info
+					_request(settings.getHostInfo()).get(url, _.clean({
+						query: query, 
+					}), function(err, response) {
+						callback(err, response.rows.slice(0));
+					});					
+				}
 			},
 
 			// fetch the 'removeView' list; returns array of objects marked "_deleted"
@@ -198,15 +216,15 @@ var bulk = function( op ) {
 					return callback(data);
 				}
 				
-				if (data && data.rows) {
+				if (data && data.length) {
 					if (op === 'remove') {
-						data = data.rows.map(function(row) {
+						data = data.map(function(row) {
 							return {_id: row.id, _rev: row.value.rev, _deleted: true};
 						});
 					} else {
 						
 						// create or update
-						data = data.rows.map(function(row) {
+						data = data.map(function(row) {
 							let doc = docs[row.key];
 							if (row.value && row.value.rev) {
 								doc._rev = row.value.rev;
