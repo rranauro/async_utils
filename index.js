@@ -35,29 +35,42 @@ exports.bulkSave = function(settings, options) {
 	return function(json, callback) {
 		var total_docs = 0;
 	
-		async.eachLimit(_.range(0, json.length, 1000), 5, function(start, callback) {
+		async.mapLimit(_.range(0, json.length, 1000), 5, function(start, next) {
 			request.post({
 				url: [settings.db, '_bulk_docs'].join('/'),
 				json: true,
 				body: { docs: json.slice(start, start + 1000) }
 			}, function(err, response) {					
-				var errors;
-				total_docs += (_.where((response && response.body || []), {ok: true})).length;
-				if (err || !options.silent) {
-					errors = _.chain(response && response.body || [])
-					.groupBy(function(doc) { return doc.reason ? doc.reason : 'ok' })
-					.map(function(values, group) {
-						return({error: values[0].error, reason: group, count: values.length});
-					})
-					.value()[0];
-										
-					console.log('Error:', err, 'Status:', errors.error 
-					? _.sprintf('%s, %s: %d', errors.error, errors.reason, errors.count)
-					: _.sprintf('ok: %d', errors.count), 'Total:', total_docs);
+
+				if (err) {
+					
+					// Request error, no fallback
+					return next(err);
 				}
-				callback(err, errors);
+				
+				// Update semantics, fallback with diagnostics
+				total_docs += (_.where((response && response.body || []), {ok: true})).length;
+				let errors = _.chain(response && response.body || [])
+				.groupBy(function(doc) { return doc.reason || 'ok' })
+				.map(function(values, group) {
+					return({error: values[0].error, reason: group, count: values.length, ok: group === 'ok'});
+				})
+				.value();
+				
+				if (!options.silent) {
+					errors.forEach(function(error) {
+						if (error.ok) {
+							console.log(_.sprintf('Success: %d, Total: %d', error.count, total_docs)); 								
+						} else {
+							console.log(_.sprintf('Error: %s, Reason: %s, Total: %d', error.error, error.reason, error.count)); 
+						}
+					});
+				}
+				next(null, response.body);
 			});
-		}, callback);	
+		}, function(err, jobs) {
+			callback(err, _.flatten(jobs));
+		});	
 	};	
 };
 
@@ -139,23 +152,31 @@ exports.cleanDoc = function(doc) {
 };
 
 var bulk = function( op ) {
-	return function(settings, _view, transform) {
+	return function(settings, _collection, transform) {
 		var db = settings.getHostInfo('db');
 		var _ddoc = settings.getHostInfo('ddoc');
 		var callback = arguments[arguments.length-1];
 
 		async.waterfall([
 		
+			// index query using "collections" _view; or keyed using _all_docs
 			function(callback) {
+				let url = _.isArray(_collection) ? '_all_docs' : '_design/lifescience/_list/alldocs/collections';
+				let method = _.isArray(_collection) ? 'post' : 'get';
+				let query = _.isArray(_collection)
+				? undefined
+				: {
+					reduce: false, 
+					collection: _collection, 
+					startkey: JSON.stringify([_collection]), 
+					endkey: JSON.stringify([_collection,{}])
+				};
 			
 				// query the view and get _id/_rev info
-				_request(settings.getHostInfo()).get('_design/lifescience/_list/alldocs/collections', {
-					query: {
-						reduce: false, 
-						collection: _view, 
-						startkey: JSON.stringify([_view]), 
-						endkey: JSON.stringify([_view,{}])
-					}}, callback);
+				_request(settings.getHostInfo())[method](url, _.clean({
+					query: query, 
+					body: _.isArray(_collection) ? {keys: _collection} : undefined
+				}), callback);
 			},
 
 			// fetch the 'removeView' list; returns array of objects marked "_deleted"
@@ -164,6 +185,12 @@ var bulk = function( op ) {
 				if (data && data.error || data && data.code > 399) {
 					console.log('[ util ] error:', data.error, data.reason || data.message);
 					return callback(data);
+				}
+				
+				if (data && data.rows) {
+					data = data.rows.map(function(row) {
+						return {_id: row.id, _rev: row.value.rev, _deleted: true};
+					});
 				}
 			
 				if (op == 'remove') console.log('Removing', data.length);
@@ -224,222 +251,6 @@ var runCommand = function(commandStr, args, options, callback) {
 	return build;
 };
 exports.runCommand = runCommand;
-
-var pipelineCollection = function( settings, context ) {
-	var _collection = []
-	, totalSaved = 0
-	, id = _.uniqueId()
-	, timer = exports.timeStamp().start(id)
-	, options = context.drain;
-	
-	_collection.toJSON = function() {
-		return this.slice(0);
-	};
-	
-	_collection.ok = function() {
-		return !!this.length;
-	};
-	
-	_collection.add = function( obj ) {
-		if (_.isArray(obj)) {
-			_.each(obj, function(item) {
-				this.push( item );
-			}, _collection);
-			return this;
-		}
-		_collection.push( obj );
-		return this;		
-	};
-	
-	_collection.reset = function() {
-		this.length = 0;
-	};
-	
-	_collection.save = function(callback) {
-		if (this.ok()) {
-			totalSaved += this.length;
-			console.log( _.template(this.message_template)({
-				module: options.module || 'pipeline',
-				id: id,
-				saving: this.length,
-				total_saved: totalSaved,
-				elapsed: timer.time( id ),
-				docs_per_second: Math.round(totalSaved/(timer.time( id ))).toFixed(2),
-				memory: _.memory()
-			}) );
-		
-			// save the models;
-			return exports.bulkSave(settings, {silent: true})(this.toJSON(), callback);
-		} else if (_collection.length) {
-			return callback({error: 'collection_not_ok'});
-		}
-		callback(null, {message: 'nothing_to_save'});
-	}
-	_collection.message_template = '[ pipeline ] [thread <%= id %>] Bulk saving (<%= saving %>), total saved (<%= total_saved %>), elapsed (<%= elapsed %>), docs/s (<%= docs_per_second %>), memory (<%= memory %>)';
-
-	// allow the user to inject these methods on the drain;
-	_.extend(_collection, _.pick(options || {}, 'save', 'toJSON', 'ok', 'add'));
-	_collection.context = context;
-	return _collection;	
-};
-
-var readRequest = function( settings, options) {
-	var that = {} 
-	, totalSaved = 0
-	, id = _.uniqueId('thread')
-	, _collection = pipelineCollection( settings, options )
-	, read = function(callback, count) {
-		let self = this;
-		
-		request({
-			url: this.url,
-			json: true,
-			method: this.method || 'GET',
-			body: this.method === 'POST' ? this.body : undefined,
-			headers: this.headers
-		}, _.bind(function(err, response) {
-		
-			if (err) {
-				if (response && response.statusCode && response.statusCode === 404) {
-					console.log(_.sprintf('[%s] error: "%s"', id, response.statusMessage));
-					return callback();
-				}
-				if (!response) {
-					console.log(_.sprintf('[%s] error: "%s"', id, err.message));
-					return callback();
-				}
-				callback(err);
-			}
-			
-			// Service Unavailable, Too Many Connections
-			if (response && response.statusCode === 503) {
-				if (count === 10) {
-					console.log(_.sprintf('[%s] error: "too many retries"', id));
-					return callback({error: 'read_failed', reason: 'too_many_retries'});
-				}
-	
-				return _.wait((0.25 * count || 1), function() {
-					console.log(_.sprintf('[%s] fetch error: %s, retries (%d)', 
-						id, response.statusMessage || response.statusCode, count || 1));
-					read.call(self, callback, count ? count + 1 : 2);
-				});
-			}
-			
-			if (response && response.body) {
-				
-				// parse the results
-				this.parse( response.body );
-		
-				if (_.result(this, 'ok')) {
-					_collection.add( this.toJSON() );
-					this.destroy()
-				} else {
-					if (this.error) {
-						console.log(_.sprintf('[pipeline] warning: error: "%s", reason: "%s"', this.error, this.reason || this.error));
-					}
-				}				
-				return callback(); 					
-				
-			}
-			callback(null, {error: 'read_failed', reason: 'missing_body'}); 					
-		}, this));
-	};
-	
-	that.read = function(query, callback) {
-		_.defaults(query || {}, {
-			parse: function(data) {
-				this.attributes = data;
-				return this.attributes;
-			},
-			toJSON: function() {
-				return this.attributes;
-			},
-			ok: true,
-			destroy: _.bind(function() {
-				_.each(['ok','parse', 'attributes', 'toJSON', 'url'], function(key) {
-					delete this[key];
-				}, this);
-			}, query)
-		});
-		
-		if (_.isFunction(query.read)) {
-			return query.read.call(query, function() {
-				if (_.result(query, 'ok')) {
-					_collection.add( query.toJSON() );
-					query.destroy()
-					callback();
-				}
-			});
-		}
-		return read.call(query, callback );		
-	};
-	
-	that.reset = function() {
-		_collection.reset();
-		return this;		
-	};
-	
-	that.save = _.bind(_collection.save, _collection);
-	return that;
-};
-
-
-var pipeline = function(settings) {
-	
-	var go = function(options) {
-		var threads
-		, chunks;
-		
-		options = _.defaults(options, {
-			drain: pipelineCollection,
-			source: readRequest,
-			threads: 1,
-			bucketSize: 1,
-			callback: function(){}
-		})
-		var thread = function(chunk, threadFinish) {
-		
-			// we re-use the same reqRequest / collection over and over for each operation on this thread.
-			// that way, we recycle memory without generating new collections every time.
-			var readReq = options.source( settings, options );
-
-			// process one bucket
-			async.eachLimit(_.range(0, chunk.length, options.bucketSize), 1, function(start, continue_processing) {
-				readReq.reset();
-
-				// fetch from server one simultaneous read per bucket;
-				async.eachLimit(chunk.slice(start, start + options.bucketSize), 1, readReq.read, function() {
-					readReq.save(continue_processing);
-				});
-			}, threadFinish);
-		}
-
-		// compute the start index of each thread and return the array slice
-		threads = options.queries.length > options.threads ? options.threads : options.queries.length; 
-		chunks = _.map(_.range(0, options.queries.length, (options.queries.length / threads)), 
-				function(start) {
-			return options.queries.slice(start, start + (options.queries.length / threads));
-		});
-
-		// parallelism is determined by the number of "chunks". 
-		// Each chunk runs serially internally
-		async.each(chunks, function(job, finish) {
-			_.wait(Math.random(), function() { thread( job, finish); });
-		}, function(err, response) {
-			if (response && response.error) {
-				console.log('[pipeline] warning:', response.errror, response.reason);
-				err = _.pick(response, 'error', 'reason');
-			}
-			options.callback(err, options);
-		}); 
-	};
-	
-	return({
-		drain: pipelineCollection,
-		source: readRequest,
-		go: go
-	});
-};
 
 var readRequest = function( settings, options, collection) {
 	var that = {} 
@@ -579,9 +390,9 @@ var readRequest = function( settings, options, collection) {
 			}) );
 		
 			// save the models;
-			return exports.bulkSave(settings, {silent: true})(docs, function() {
+			return exports.bulkSave(settings, {silent: !!options.silent})(docs, function(err, response) {
 				if (!options.processed) self.processed.length = 0; 
-				self.onSave( docs );
+				self.onSave( docs, response );
 				callback();
 			});
 		} 
@@ -652,8 +463,6 @@ var pipeline = function(settings) {
 	};
 	
 	return({
-		drain: pipelineCollection,
-		source: readRequest,
 		go: go
 	});
 };
