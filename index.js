@@ -332,8 +332,8 @@ var readRequest = function( settings, options, collection) {
 		let onRead = _.bind(function(err, response) {
 			if (response && !response.error && _.result(query, 'ok')) {
 				this.add( query.toJSON() );
-				query.destroy()
 			}
+			query.destroy()
 			callback.apply(this);
 		}, this);
 		
@@ -397,10 +397,10 @@ var readRequest = function( settings, options, collection) {
 			return exports.bulkSave(settings, {silent: !!options.silent})(docs, function(err, response) {
 				if (!options.processed) self.processed.length = 0; 
 				self.onSave( docs, response );
-				callback();
+				callback(null, {total_processed: self.processed.length});
 			});
 		} 
-		callback(null, {message: 'nothing_to_save'});
+		callback(null, {total_processed: self.processed.length});
 	}
 	that.message_template = '[ pipeline ] [thread <%= id %>] Bulk saving (<%= saving %>), total saved (<%= total_saved %>), elapsed (<%= elapsed %>), docs/s (<%= docs_per_second %>), memory (<%= memory %>)';
 
@@ -449,9 +449,9 @@ var pipeline = function(settings) {
 		
 		queue = async.queue( handleOne, threads );
 		queue.drain = function() {
-			readReq.save( readReq.toJSON(), function() {
+			readReq.save( readReq.toJSON(), function(err, response) {
 				readReq.reset();
-				options.callback(null, readReq);
+				options.callback(null, readReq, response);
 			});
 		};
 		
