@@ -1,6 +1,4 @@
-var _ = require('underscore')._;
-_.mixin( require('base-utils') );
-
+var _ = require('base-utils');
 var request = require('request');
 var async = require('async');
 var ObjTree = require('objtree');
