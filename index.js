@@ -1,4 +1,4 @@
-var _ = require('base-utils');
+var _ = require('base-utils')._;
 var request = require('request');
 var async = require('async');
 var ObjTree = require('objtree');
