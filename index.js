@@ -494,15 +494,20 @@ var pipeline = function(settings) {
 			});
 		};
 		
-		options.queries.forEach(function(query) {
-			queue.push( query, function(err, response) {
-				if (response && response.error) {
-					console.log('[pipeline] warning:', response.errror, response.reason);
-					err = _.pick(response, 'error', 'reason');
+		if (options.queries.length) {
+			options.queries.forEach(function(query) {
+				queue.push( query, function(err, response) {
+					if (response && response.error) {
+						console.log('[pipeline] warning:', response.errror, response.reason);
+						err = _.pick(response, 'error', 'reason');
 					
-				}
+					}
+				});
 			});
-		});
+		} else {
+			options.callback();
+		}
+
 	};
 	
 	return({
