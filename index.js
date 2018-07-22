@@ -108,7 +108,7 @@ var _request = function(settings, opts) {
 				auth: opts.auth,
 				headers: options.headers || opts.headers
 			}), function(err, response) {
-				if (err) return callback(err, response);
+				if (err || response.statusCode > 399) return callback(err || response.statusCode, err || response);
 				callback(null, opts.parseXML ? toJson.parseXML( response.body ) : response.body);			
 			});			
 		}
