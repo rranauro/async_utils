@@ -1,6 +1,6 @@
 {
   "name": "async_utils",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Batch/pipeline utilities based on Async",
   "main": "index.js",
   "scripts": {
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rranauro/async_utils.git"
+    "url": "git@github.com:rranauro/async_utils.git"
   },
   "keywords": [
     "Async", "Workflow"
@@ -21,10 +21,10 @@
   "homepage": "https://github.com/rranauro/async_utils#readme",
   "dependencies": {
       "async": "1.x",
-	  "base-utils": "https://github.com/rranauro/base-utils.git",
+	  "base-utils": "git@github.com:rranauro/base-utils.git",
       "fs": "0.0.1-security",
       "moment": "^2.17.1",
-      "objtree": "https://github.com/rranauro/ObjTree.git",
+      "objtree": "git@githumb.com:rranauro/ObjTree.git",
       "request": "^2.60.x",
       "underscore": "^1.4.4"
   }
