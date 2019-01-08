@@ -24,7 +24,7 @@
 	  "base-utils": "git@github.com:rranauro/base-utils.git",
       "fs": "0.0.1-security",
       "moment": "^2.17.1",
-      "objtree": "git@githumb.com:rranauro/ObjTree.git",
+      "objtree": "git@github.com:rranauro/ObjTree.git",
       "request": "^2.60.x",
       "underscore": "^1.4.4"
   }
