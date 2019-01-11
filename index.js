@@ -96,7 +96,7 @@ var _request = function(settings, opts) {
 				options = {};
 			}
 			
-			if (options.query) {
+			if (options && options.query) {
 				options.query = require('querystring').encode( options.query );
 				url = url + '?' + options.query;
 			}
