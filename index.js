@@ -88,7 +88,7 @@ var _request = function(settings, opts) {
 				url = null;
 				options = {};
 			}
-			url = options.url || settings && settings.db && [settings.db, url].join('/') || url && settings && [settings, url].join('/') || settings;
+			url = (options && options.url) || (settings && settings.db && [settings.db, url].join('/')) || (url && settings && [settings, url].join('/')) || settings;
 			if (!url || url && typeof url === 'object') throw new Error('bad "url"');
 			
 			if (_.isFunction(options)) {
