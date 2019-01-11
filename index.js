@@ -97,11 +97,6 @@ var _request = function(settings, opts) {
 			url = (options && options.url) || (settings && settings.db && [settings.db, url].join('/')) || (url && settings && [settings, url].join('/')) || settings;
 			if (!url || url && typeof url === 'object') throw new Error('bad "url"');
 			
-			if (_.isFunction(options)) {
-				callback = options;
-				options = {};
-			}
-			
 			if (options && options.query) {
 				options.query = require('querystring').encode( options.query );
 				url = url + '?' + options.query;
