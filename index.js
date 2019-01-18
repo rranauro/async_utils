@@ -114,6 +114,9 @@ var _request = function(settings, opts) {
 				headers: options && options.headers || opts.headers
 			}), function(err, response) {
 				if (err || response.statusCode > 399) return callback(err || response.statusCode, err || response);
+				if (response && _.isFunction(response.toJSON)) {
+					response = response.toJSON();
+				}
 				callback(null, opts.parseXML ? toJson.parseXML( response.body ) : response.body);			
 			});			
 		}
