@@ -73,7 +73,7 @@ exports.bulkSave = function(settings, options) {
 };
 
 var _request = function(settings, opts) {
-	opts = _.defaults(opts || {}, {parseXML: false, force_array: []});
+	opts = _.defaults(opts || {}, {parseXML: false, force_array: [], full_response: false});
 	var toJson;
 	
 	if (opts.parseXML) {
@@ -105,19 +105,24 @@ var _request = function(settings, opts) {
 				options.query = require('querystring').encode( options.query );
 				url = url + '?' + options.query;
 			}
+			
+			options = _.defaults(options, opts.headers);
 			return request(_.clean({
 				url: url,
 				method: method,
 				json: true,
 				body: options && options.body,
 				auth: opts.auth,
-				headers: options && options.headers || opts.headers
+				headers: options && options.headers
 			}), function(err, response) {
 				if (err || response.statusCode > 399) return callback(err || response.statusCode, err || response);
 				if (response && _.isFunction(response.toJSON)) {
 					response = response.toJSON();
 				}
-				callback(null, opts.parseXML ? toJson.parseXML( response.body ) : response.body);			
+				if (options.parseXML) {
+					return callback(null, toJson.parseXML( response.body ));
+				}
+				callback(null, options.full_response ? response : response.body);			
 			});			
 		}
 	}
