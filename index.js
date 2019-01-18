@@ -106,7 +106,7 @@ var _request = function(settings, opts) {
 				url = url + '?' + options.query;
 			}
 			
-			options = _.defaults(options, opts.headers);
+			options = _.defaults(options, opts);
 			return request(_.clean({
 				url: url,
 				method: method,
