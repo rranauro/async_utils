@@ -115,14 +115,13 @@ var _request = function(settings, opts) {
 				auth: opts.auth,
 				headers: options && options.headers
 			}), function(err, response) {
-				if (err || response.statusCode > 399) return callback(err || response.statusCode, response || err);
 				if (response && _.isFunction(response.toJSON)) {
 					response = response.toJSON();
 				}
-				if (options.parseXML) {
+				if (!err && options.parseXML) {
 					return callback(null, toJson.parseXML( response.body ));
 				}
-				callback(null, options.full_response ? response : response.body);			
+				callback(err, options.full_response ? response : response.body);			
 			});			
 		}
 	}
