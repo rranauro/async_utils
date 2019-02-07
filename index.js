@@ -122,7 +122,7 @@ var _request = function(settings, opts) {
 					return callback(null, toJson.parseXML( response.body ));
 				}
 				err = err || (response && response.statusCode > 399) ? (response && response.statusCode) || err : null;
-				callback(err, options.full_response ? response : response.body);			
+				callback(err, options.full_response ? response : (response || {body: null}).body);			
 			});			
 		}
 	}
