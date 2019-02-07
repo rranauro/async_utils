@@ -121,7 +121,7 @@ var _request = function(settings, opts) {
 				if (!err && options.parseXML) {
 					return callback(null, toJson.parseXML( response.body ));
 				}
-				err = err || (response && response.statusCode > 399) ? response.statusCode : null;
+				err = err || (response && response.statusCode > 399) ? (response && response.statusCode) || err : null;
 				callback(err, options.full_response ? response : response.body);			
 			});			
 		}
