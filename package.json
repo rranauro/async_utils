@@ -1,6 +1,6 @@
 {
   "name": "async_utils",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Batch/pipeline utilities based on Async",
   "main": "index.js",
   "scripts": {
@@ -23,6 +23,7 @@
       "async": "1.x",
 	  "base-utils": "git@github.com:rranauro/base-utils.git",
       "fs": "0.0.1-security",
+      "ftp": "^0.3.10",
       "moment": "^2.17.1",
       "objtree": "git@github.com:rranauro/ObjTree.git",
       "request": "^2.60.x",

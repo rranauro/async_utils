@@ -135,6 +135,82 @@ var _request = function(settings, opts) {
 };
 exports.request = _request;
 
+const FTP = function(config) {
+	var FTP = require('ftp');
+	
+	return {
+		download: function(fname, callback) {
+			var fs = require('fs');
+			var c = new FTP();
+			var path = fname.split('/').slice(0, fname.split('/').length-1).join('/');
+			fname = _.last(fname.split('/'));
+			
+			console.log('[FTP] info: ', config.host, fname, path);
+			c.on('ready', function() {
+		
+				async.waterfall([
+			
+					function(callback) {
+						c.cwd(path, callback);
+					},
+			
+					function(pwd, callback) {
+						c.pwd(callback);
+					},
+			
+					function(pwd, callback) {
+				
+						if (pwd.slice(1) !== path) callback('PWD Failed.');
+						c.list(callback);
+					},
+			
+					function(list, callback) {
+				
+						if (!_.find(list, function(item) {
+							return item.name.toLowerCase().match( fname.toLowerCase() );
+						})) {
+							return callback('List Failed.');
+						}
+				
+						list = _.find(list, function(item) {
+							return item.name.toLowerCase().match( fname.toLowerCase() );
+						});
+						c.get(list.name, function(err, stream) {
+							if (err) throw err;
+							stream.once('close', function() {
+								callback(null, list.name);
+							});
+							stream.pipe(fs.createWriteStream(['/tmp', list.name].join('/')));
+						});
+					}
+				], function(err, fname) {
+			
+					console.log('[ftp] info:', err || 'Finished.');
+					c.end();
+					callback(err, err || {ok:true, fname: fname});
+				});
+			});
+			
+			// connect
+			c.connect( config );
+		},
+		unzip: function(fname) {
+			
+			// fname can be response object from download or string.
+			fname = fname && fname.fname || fname;
+			var zlib = require('zlib');
+			var fs = require('fs');
+
+			var gzip = zlib.createGunzip();
+			var r = fs.createReadStream(['/tmp', fname].join('/'));
+			var w = fs.createWriteStream(['/tmp', fname.replace('.gz', '')].join('/'));
+			console.log('[FTP] info: unzipping...', fname);
+			r.pipe(gzip).pipe(w);
+		}
+	}
+};
+exports.FTP = FTP;
+
 exports.cleanDoc = function(doc) {
 	var cleanString = function(input) {
 	    var output = "";
