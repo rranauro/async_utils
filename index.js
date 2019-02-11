@@ -244,13 +244,14 @@ const Stream = function(config) {
 			return this;
 		},
 		contents: function(fname, callback) {
+			let self = this;
 			
 			// read a zip file
 			fs.readFile(this.zipname, function(err, data) {
 			    if (err) throw err;
 				
 			    JSZip.loadAsync(data).then(function (zip) {
-			      	callback(null, self, _.keys(zip.files).indexOf(fname) !== -1);
+			      	callback(_.keys(zip.files).indexOf(fname) === -1 ? false : null, self);
 			    });
 			});
 		},
