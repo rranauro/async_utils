@@ -211,6 +211,89 @@ const FTP = function(config) {
 };
 exports.FTP = FTP;
 
+const Stream = function(config) {
+	// https://github.com/jahewson/node-byline
+	var byLine = require('byline');
+	
+	var fs = require('fs');
+	// https://stuk.github.io/jszip/
+	var JSZip = require("jszip");
+	
+	let stream = {
+		stream: function(path, fname, callback) {
+			let self = this;
+			self.zipname = fname = ['/tmp', fname].join('/');
+		    let file = fs.createWriteStream(fname);
+			
+			request.get([config.hostname, path].join('/'), function(response) {
+				console.log('Piping...');
+				// request.pipe(file);
+			})
+			.pipe(file)
+			.on('error', function(err) {
+				console.log('[stream] error:', err.message);
+				callback(err);
+			});
+
+			file.on('finish', function() {
+				file.close(function() {
+					console.log('Final close.');
+					callback(null, self);
+				}); // close() is async, call cb after close completes.
+			});
+			return this;
+		},
+		contents: function(fname, callback) {
+			
+			// read a zip file
+			fs.readFile(this.zipname, function(err, data) {
+			    if (err) throw err;
+				
+			    JSZip.loadAsync(data).then(function (zip) {
+			      	callback(null, self, _.keys(zip.files).indexOf(fname) !== -1);
+			    });
+			});
+		},
+		unzip: function(fname, callback) {
+			let self = this;
+			
+			// read a zip file
+			self.outfname = ['/tmp', fname].join('/');
+			fs.readFile(this.zipname, function(err, data) {
+			    if (err) throw err;
+				
+			    JSZip.loadAsync(data).then(function (zip) {
+					
+					zip
+					.file( fname )
+					.nodeStream()
+					.pipe(fs.createWriteStream( self.outfname ))
+					.on('finish', function () {
+					    // JSZip generates a readable stream with a "end" event,
+					    // but is piped here in a writable stream which emits a "finish" event.
+					    console.log('[Stream/unzip] info: saved.', self.outfname);
+						callback(null, self);
+					});
+			    });
+			});
+			return this;
+		},
+		unlink: function(callback) {
+			let self = this;
+			async.eachLimit([this.zipname, this.outfname], 1, function(fname, next) {
+				fs.unlink(fname, next);
+			}, function(err) {
+				callback(err, self);
+			});
+		},
+		byLine: function() {
+			return byLine( fs.createReadStream(this.outfname, { encoding: 'utf8' }) );
+		}
+	};
+	return stream;
+};
+exports.Stream = Stream;
+
 exports.cleanDoc = function(doc) {
 	var cleanString = function(input) {
 	    var output = "";
