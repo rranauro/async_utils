@@ -1,4 +1,5 @@
-var _ = require('base-utils')._;
+var _ = require('underscore')._;
+_.mixin( require('toolbelt') );
 var request = require('request');
 var async = require('async');
 var ObjTree = require('objtree');
