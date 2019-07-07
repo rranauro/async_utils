@@ -1,236 +1,354 @@
 var _ = require('underscore')._;
 _.mixin( require('toolbelt') );
-var request = require('request');
+var node_request = require('request');
 var async = require('async');
 var ObjTree = require('objtree');
 var fs = module.require('fs');
-var moment = require('moment');
-var qs = require('querystring');
 
-exports.timeStamp = function() {
-	var tags = {}
-	
-	return({
-		start: function(tag) {
-			this.time(tag);
-			return this;
-		},
-		time: function(tag, reset) {
-			if (!tags[tag] || reset) {
-				tags[tag] = Date.now()
-			}
-			return Math.round((Date.now() - tags[tag]) / 1000).toFixed(2);
-		},
-		timeEnd: function(tag) {
-			var end = this.time(tag);
-			delete tags[tag];
-			return end;
-		}
-	});
-};
+// https://github.com/jahewson/node-byline
+var byLine = require('byline');
 
-exports.bulkSave = function(settings, options) {
-	options = _.defaults(options || {}, {silent: false});
-	return function(json, callback) {
-		var total_docs = 0;
-	
-		async.mapLimit(_.range(0, json.length, 1000), 5, function(start, next) {
-			request.post({
-				url: [settings.db, '_bulk_docs'].join('/'),
-				json: true,
-				body: { docs: json.slice(start, start + 1000) }
-			}, function(err, response) {					
+// https://stuk.github.io/jszip/
+var JSZip = require("jszip");
 
-				if (err) {
-					
-					// Request error, no fallback
-					return next(err);
-				}
-				
-				// Update semantics, fallback with diagnostics
-				total_docs += (_.where((response && response.body || []), {ok: true})).length;
-				let errors = _.chain(response && response.body || [])
-				.groupBy(function(doc) { return doc.reason || 'ok' })
-				.map(function(values, group) {
-					return({error: values[0].error, reason: group, count: values.length, ok: group === 'ok'});
-				})
-				.value();
-				
-				if (!options.silent) {
-					errors.forEach(function(error) {
-						if (error.ok) {
-							console.log(_.sprintf('Success: %d, Total: %d', error.count, total_docs)); 								
-						} else {
-							console.log(_.sprintf('Error: %s, Reason: %s, Total: %d', error.error, error.reason, error.count)); 
-						}
-					});
-				}
-				next(null, response.body);
-			});
-		}, function(err, jobs) {
-			callback(err, _.flatten(jobs));
-		});	
-	};	
-};
+// https://github.com/mscdex/node-ftp
+var Ftp = require('ftp');
 
-var _request = function(settings, opts) {
-	opts = _.defaults(opts || {}, {parseXML: false, force_array: [], full_response: false});
+// zip library used with ftp download.
+var zlib = require('zlib');
+
+var request = function(url, opts) {
+	opts = _.defaults(opts || {}, {parseXML: false, force_array: [], full_response: false, raw: false, errorHandler: function() {}});
 	var toJson;
-	
-	if (opts.parseXML) {
-	    toJson = new ObjTree();
-	   	toJson.force_array = opts.force_array;
-	}
 
 	var makeRequest = function( method ) {
-		return function(url, options, callback) {
-			if (_.isFunction(url)) {
-				callback = url;
-				url = null;
+		return function(endpoint, options, callback) {
+			if (_.isFunction(endpoint)) {
+				callback = endpoint;
+				endpoint = null;
 				options = {};
 			}
 			
 			if (_.isFunction(options)) {
 				callback = options;
-				options = {};
+				options = endpoint;
+				endpoint = null;
 			}
 			
 			if (!_.isFunction(callback)) {
 				callback = function(){};
 			}
 			
-			url = (options && options.url) || (settings && settings.db && [settings.db, url].join('/')) || (url && settings && [settings, url].join('/')) || settings;
-			if (!url || url && typeof url === 'object') throw new Error('bad "url"');
-			
+			url = !!endpoint ? [url, endpoint].join('/') : url;
 			if (options && options.query) {
-				options.query = require('querystring').encode( options.query );
-				url = url + '?' + options.query;
+				url = url + '?' + require('querystring').stringify( options.query );
 			}
 			
 			options = _.defaults(options, opts);
-			return request(_.clean({
+			return node_request(_.clean({
 				url: url,
 				method: method,
 				json: true,
-				body: options && options.body,
-				auth: opts.auth,
-				headers: options && options.headers
+				body: options.body,
+				auth: options.auth || opts.auth,
+				headers: options.headers || opts.headers
 			}), function(err, response) {
+
+				// request can succeed but server issues failing statusCode.
+				err = (err || (response && response.statusCode > 399)) 
+				? ((response && response.statusCode) || err) 
+				: null;
+
+				if (err) {
+					
+					// return with the error and raw response object.
+					return callback(err, response);
+				}
+				
+				if (opts.raw || options.full_response) {
+					
+					// if raw just return with response.
+					return callback(null, response)
+				}
+
+				if (opts.parseXML || options.parseXML) {
+					
+					if (!toJson) {
+					    toJson = new ObjTree();
+					   	toJson.force_array = options.force_array || opts.force_array;
+					}
+					
+					// if parseXML set, then parse the body
+					return callback(null, toJson.parseXML( response.body, {errorHandler: opts.errorHandler} ));
+				}
+
 				if (response && _.isFunction(response.toJSON)) {
+					
+					// server response includes method.
 					response = response.toJSON();
 				}
-				if (!err && options.parseXML) {
-					return callback(null, toJson.parseXML( response.body ));
-				}
-				err = err || (response && response.statusCode > 399) ? (response && response.statusCode) || err : null;
-				callback(err, options.full_response ? response : (response || {body: null}).body);			
+				
+				// caller just wants the body of the response.
+				callback(err, (response || {body: null}).body);			
 			});			
 		}
-	}
+	};
 	return({
+		DELETE: makeRequest('DELETE'),
+		POST: makeRequest('POST'),
+		PUT: makeRequest('PUT'),
+		GET: makeRequest('GET'),
 		delete: makeRequest('DELETE'),
 		post: makeRequest('POST'),
 		put: makeRequest('PUT'),
 		get: makeRequest('GET')
 	});
 };
-exports.request = _request;
+exports.request = request;
 
-const FTP = function(config) {
-	var FTP = require('ftp');
+var child_process = require('child_process');
+var runCommand = function(commandStr, args, options, callback) {
+	var child = child_process.spawn(commandStr, args)
+	, result = '';
 	
-	return {
-		download: function(fname, callback) {
-			var fs = require('fs');
-			var c = new FTP();
-			var path = fname.split('/').slice(0, fname.split('/').length-1).join('/');
-			fname = _.last(fname.split('/'));
-			
-			console.log('[FTP] info: ', config.host, fname, path);
-			c.on('ready', function() {
+	parse = _.isFunction(options && options.parse) ? options.parse : function(x) {
 		
-				async.waterfall([
-			
-					function(callback) {
-						c.cwd(path, callback);
-					},
-			
-					function(pwd, callback) {
-						c.pwd(callback);
-					},
-			
-					function(pwd, callback) {
-				
-						if (pwd.slice(1) !== path) callback('PWD Failed.');
-						c.list(callback);
-					},
-			
-					function(list, callback) {
-				
-						if (!_.find(list, function(item) {
-							return item.name.toLowerCase().match( fname.toLowerCase() );
-						})) {
-							return callback('List Failed.');
-						}
-				
-						list = _.find(list, function(item) {
-							return item.name.toLowerCase().match( fname.toLowerCase() );
-						});
-						c.get(list.name, function(err, stream) {
-							if (err) throw err;
-							stream.once('close', function() {
-								callback(null, list.name);
-							});
-							stream.pipe(fs.createWriteStream(['/tmp', list.name].join('/')));
-						});
-					}
-				], function(err, fname) {
-			
-					console.log('[ftp] info:', err || 'Finished.');
-					c.end();
-					callback(err, err || {ok:true, fname: fname});
-				});
-			});
-			
-			// connect
-			c.connect( config );
-		},
-		unzip: function(fname) {
-			
-			// fname can be response object from download or string.
-			fname = fname && fname.fname || fname;
-			var zlib = require('zlib');
-			var fs = require('fs');
-
-			var gzip = zlib.createGunzip();
-			var r = fs.createReadStream(['/tmp', fname].join('/'));
-			var w = fs.createWriteStream(['/tmp', fname.replace('.gz', '')].join('/'));
-			console.log('[FTP] info: unzipping...', fname);
-			r.pipe(gzip).pipe(w);
+		// not all stdout strings are well formed objects; 
+		// the client may be looking for something like index 1 of '["log", "{"doc":{}}"]'
+		try {
+			return JSON.parse(x);
 		}
+		catch(e) {
+			return x;
+		}
+	};
+	
+	// pipe child stdout to process.stdout; set encoding to text;
+	if (options && options.pipe) {
+		child.stdout.pipe(process.stdout, { end: false });
+		child.stdout.setEncoding('utf8');
 	}
-};
-exports.FTP = FTP;
+	
+	// capture stdout from child_process and look for the final 'doc' object; 
+	child.stdout.on('data', function(data) {				
+		result += data;
+	});
+	
+	child.stdout.on('end', function() {		
+		result = parse(result);		
+	});
 
-const Stream = function(config) {
-	// https://github.com/jahewson/node-byline
-	var byLine = require('byline');
+	// when command exits
+	child.on('exit', function (code) {
+		// execute the callback with the results from the workflow
+		callback(code || 0, result);
+	});
+	return child;
+};
+
+var Download = function(obj, parent) {
+	_.extend(this, obj);
+	this.path = [parent.tmp || '/tmp', this.name].join('/');
+	if (!this.fname && this.name) {
+		this.fname = this.name.replace('.gz', '')
+	}
+	this._connection = parent;
+	return this;
+};
+
+Download.prototype.gunzip = function(callback) {
+	var self = this;
 	
-	var fs = require('fs');
-	// https://stuk.github.io/jszip/
-	var JSZip = require("jszip");
+	if (this.name.split(/.gz/).length < 2) {
+		console.log('[FTP] info: skipping...', this.name);
+		return callback();
+	}
+
+	fs.createReadStream( this.path )
+	.pipe( zlib.createGunzip() )
+	.pipe( fs.createWriteStream( this.path.replace('.gz', '') )
+
+		.on('close', function() {
+			fs.unlink( self.path, callback);
+		}) );
+
+	return this;
+};
+
+Download.prototype.zipunzip = function(callback) {
+	var self = this;
 	
-	let stream = {
-		stream: function(path, fname, callback) {
-			let self = this;
-			self.zipname = fname = ['/tmp', fname].join('/');
-		    let file = fs.createWriteStream(fname);
+	// read a zip file
+	fs.readFile(this._connection.zipname, function(err, data) {
+	    if (err) throw err;
+		
+	    JSZip.loadAsync(data).then(function (zip) {
 			
-			request.get([config.hostname, path].join('/'), function(response) {
-				console.log('Piping...');
-				// request.pipe(file);
+			zip
+			.file( self.name )
+			.nodeStream()
+			.pipe(fs.createWriteStream( self.path ))
+			.on('finish', function () {
+			    // JSZip generates a readable stream with a "end" event,
+			    // but is piped here in a writable stream which emits a "finish" event.
+			    console.log('[ZIP/unzip] info: saved.', self.path);
+				callback(null, self);
 			})
-			.pipe(file)
+			.on('error', function(err) {
+				console.log('[ZIP/unzip] error:', err);
+				callback(err);
+			})
+	    })
+		.catch(function(err) {
+			console.log('[ZIP/JSZip] error:', err);
+			callback(err);
+		})
+	});
+	return this;
+};
+
+Download.prototype.unzip = function() {
+	return {
+		ftp: Download.prototype.gunzip,
+		zip: Download.prototype.zipunzip
+	}[this._connection.protocol].apply(this, arguments);
+};
+
+Download.prototype.cleanup = function(callback) {
+	var cleanupOne = function(path, next) {
+		fs.stat(path, function(err, stats) {
+			if (stats) {
+				return fs.unlink( path, function(err) {
+					next()
+				});
+			}
+			return next()
+		});	
+	};
+	
+	return cleanupOne(this.path.replace('.gz', ''), callback);
+};
+
+Download.prototype.byLine = function() {
+	return byLine( fs.createReadStream(this.path.replace('.gz', ''), { encoding: 'utf8' }) );
+};
+
+Download.prototype.readByLine = function(lineHandler, callback) {
+	return this.byLine( this.path.replace('.gz', '') )
+	.on('data', lineHandler.line)
+	.on('error', callback)
+	.on('end', function() {
+		callback(null, lineHandler);
+	});
+};
+
+Download.prototype.readXML = function(fname, options, callback) {
+	if (typeof options === 'function') {
+		callback = options;
+		options = {};
+	} else {
+		options = options || {};
+	}
+	var toJson = new ObjTree();
+	if (options.force_array) {
+		toJson.force_array = options.force_array;				
+	}
+
+	fs.readFile(this.path.replace('.gz', ''), 'utf-8', function(err, data) {
+		data = toJson.parseXML( data, _.clean({ errorHandler: options.errorHandler }));
+		callback(err, data);
+	});
+};
+
+var DownloadObjects = function( items, parent ) {
+	var self = this;
+			
+	if (parent.protocol === 'zip') {
+		this._files = _.keys(items.files).map(function(file) {
+			return new Download( {fname: file, name: file, value: items.files[file]}, parent);
+		});
+		items._manifest = items.files;
+		delete items.files;
+	} else if (parent.protocol === 'ftp') {
+		this._files = (items || []).map(function(item) {
+			return new Download( item, parent );
+		});
+	} else {
+		throw new Error('[DownloadObjects] fatal: Bad "protocol"');
+	}
+	this._connection = parent;
+	return this;
+};
+
+DownloadObjects.prototype.files = function() {
+	if ({ftp:true}[this._connection.protocol]) {
+		return this._files.filter(function(item) {
+			return !item.name.match(/.md5/) && !item.name.match(/.txt/);
+		}).slice(0, this._connection.limit);		
+	}
+	return this._files.slice(0, this._connection.limit);
+};
+
+DownloadObjects.prototype.reverse = function() {
+	this.files.reverse();
+	return this;
+};
+
+DownloadObjects.prototype.each = function(fN, callback, context) {	
+	async.eachLimit(DownloadObjects.prototype.files.apply(this), 1, _.bind(fN, context || this), callback);
+	return this;	
+};
+
+DownloadObjects.prototype.unzipAll = function(callback) {
+	this.each(function(item, next) {
+		item.unzip(next);
+	}, callback);
+};
+
+DownloadObjects.prototype.cleanup = function(callback) {
+	var self = this;
+	
+	this.each(function(item, next) {
+		item.cleanup(next);
+	}, function(err) {
+		if (err) return callback(err);
+		
+		if ({zip: true}[self._connection.protocol]) {
+			return fs.unlink( self._connection.zipname, callback );
+		}
+		callback(null);
+	});
+};
+
+var ZIP = function(config) {
+	config = _.defaults(config || {}, {tmp: '/tmp', protocol: 'zip'});
+	config.zipname = [config.tmp, config.fname].join('/');
+	
+	var stream = {
+		protocol: 'zip',
+		files: null,
+		zipname: config.zipname,
+		contents: function(callback) {
+			var self = this;
+						
+			// read a zip file
+			fs.readFile(this.zipname, function(err, data) {
+			    if (err) throw new Error(err.message);
+				
+			    JSZip.loadAsync(data).then(function (zip) {
+					self.manifest = new DownloadObjects(zip, self);
+					return callback(null, self, self.manifest);
+			    });
+			});
+		},
+		get: function(callback) {
+			var self = this;
+			var file = fs.createWriteStream( config.zipname );
+			
+			node_request.get([config.hostname, config.path].join('/'), function(response) {
+				console.log('Piping...');
+			})
+			.pipe( file )
 			.on('error', function(err) {
 				console.log('[stream] error:', err.message);
 				callback(err);
@@ -242,453 +360,91 @@ const Stream = function(config) {
 					callback(null, self);
 				}); // close() is async, call cb after close completes.
 			});
+
 			return this;
-		},
-		contents: function(fname, callback) {
-			let self = this;
-			
-			// read a zip file
-			fs.readFile(this.zipname, function(err, data) {
-			    if (err) throw err;
-				
-			    JSZip.loadAsync(data).then(function (zip) {
-			      	callback(_.keys(zip.files).indexOf(fname) === -1 ? false : null, self);
-			    });
-			});
-		},
-		unzip: function(fname, callback) {
-			let self = this;
-			
-			// read a zip file
-			self.outfname = ['/tmp', fname].join('/');
-			fs.readFile(this.zipname, function(err, data) {
-			    if (err) throw err;
-				
-			    JSZip.loadAsync(data).then(function (zip) {
-					
-					zip
-					.file( fname )
-					.nodeStream()
-					.pipe(fs.createWriteStream( self.outfname ))
-					.on('finish', function () {
-					    // JSZip generates a readable stream with a "end" event,
-					    // but is piped here in a writable stream which emits a "finish" event.
-					    console.log('[Stream/unzip] info: saved.', self.outfname);
-						callback(null, self);
-					});
-			    });
-			});
-			return this;
-		},
-		unlink: function(callback) {
-			let self = this;
-			async.eachLimit([this.zipname, this.outfname], 1, function(fname, next) {
-				fs.unlink(fname, next);
-			}, function(err) {
-				callback(err, self);
-			});
-		},
-		byLine: function() {
-			return byLine( fs.createReadStream(this.outfname, { encoding: 'utf8' }) );
 		}
 	};
 	return stream;
 };
-exports.Stream = Stream;
 
-exports.cleanDoc = function(doc) {
-	var cleanString = function(input) {
-	    var output = "";
-		
-		if (typeof input === 'string') {
-		    for (var i=0; i<input.length; i++) {
-		        if (input.charCodeAt(i) <= 127) {
-		            output += input.charAt(i);
-		        }
-	    	}
-	    	return output;			
-		}
-		return input;
-	};
-			
-	return _.reduce(doc, function(result, value, key) {
-		if (_.isString(value)) {
-			result[key] = cleanString( value );			
-		} else if (_.isArray(value)) {
-			result[key] = value.map(cleanString);
-		} else if (_.isObject(value)) {
-			result[key] = exports.cleanDoc( value );
-		}
-		return result;
-	}, doc);
-};
+var FTP = function(config) {
+	config = _.defaults(config || {}, {verbose: false, protocol: 'ftp'});
 
-var bulk = function( op ) {
-	return function(settings, _collection, transform) {
-		var db = settings.getHostInfo('db');
-		var _ddoc = settings.getHostInfo('ddoc');
-		var callback = arguments[arguments.length-1];
-		var docs;
-		
-		if (op === 'update' && _.isArray(_collection)) {
-			docs = _.reduce(_collection, function(result, doc) {
-				if (typeof doc === 'object' && doc._id) {
-					result[doc._id] = doc;
-				}
-				return result;
-			}, {});
-			_collection = _.keys(docs);
-		}
+	return {
+		protocol: 'ftp',
+		path: config.path,
+		tmp: config.tmp || '/tmp',
+		limit: config.limit,
+		files: null,
+		downloaded: [],
+		open: function(response) {
+			this.end();
+			return this.contents( config.path, response);
+		},
+		contents: function(response) {
+			var self = this;
+			var c = self._c = new Ftp();
 
-		async.waterfall([
-		
-			// index query using "collection" _view; or keyed using _all_docs
-			function(callback) {
-				let url = _.isArray(_collection) ? '_all_docs' : '_design/lifescience/_list/alldocs/collections';
-				let query = _.isArray(_collection)
-				? undefined
-				: {
-					reduce: false, 
-					collection: _collection, 
-					startkey: JSON.stringify([_collection]), 
-					endkey: JSON.stringify([_collection,{}])
-				};
+			if (config.verbose) console.log('[FTP] info: ', config.host, config.path);
+			c.on('ready', function() {
 				
-				if (_.isArray(_collection)) {
-					async.mapLimit(_.range(0, _collection.length, 10000), 1, function(start, next) {
-						
-						// query the view and get _id/_rev info
-						_request(settings.getHostInfo()).post(url, _.clean({
-							body: {keys: _collection.slice(start, start + 10000)}
-						}), function(err, response) {
-							console.log('[util] info:', response && response.rows && response.rows.length || 'no_response');
-							next(err, response && response.rows && response.rows.slice(0))
+				async.auto({
+					cwd: function(next) {
+						c.cwd(config.path, next);
+					},
+					pwd: ['cwd', function(next) {
+						c.pwd(next);
+					}],
+					list: ['pwd', function(next, data) {
+						if (data.pwd.slice(1) !== config.path) response('PWD Failed.');
+						c.list(function(err, ftplist) {
+							if (err) { c.end(); }
+							self.manifest = new DownloadObjects( ftplist, self );
+							response(err, self);
 						});
-						
-					}, function(err, docs) {
-						callback(err, _.flatten(docs));
-					});
-					
-				} else {
-					
-					// query the view and get _id/_rev info
-					_request(settings.getHostInfo()).get(url, _.clean({
-						query: query, 
-					}), function(err, response) {
-						callback(err, response.rows.slice(0));
-					});					
-				}
-			},
-
-			// fetch the 'removeView' list; returns array of objects marked "_deleted"
-			function(data, callback) {
-			
-				if (data && data.error || data && data.code > 399) {
-					console.log('[ util ] error:', data.error, data.reason || data.message);
-					return callback(data);
-				}
-				
-				if (data && data.length) {
-					if (op === 'remove') {
-						data = data.map(function(row) {
-							return {_id: row.id, _rev: row.value.rev, _deleted: true};
-						});
-					} else {
-						
-						// create or update
-						data = data.map(function(row) {
-							let doc = docs[row.key];
-							if (row.value && row.value.rev) {
-								doc._rev = row.value.rev;
-							}
-							return doc;
-						});
-					}
-				}
-			
-				if (op == 'remove') console.log('Removing', data.length);
-				if (op == 'update') console.log('Updating', data.length);
-				if (op == 'update' && _.isFunction(transform) && transform !== callback) {
-					data = transform( data );
-				}
-				exports.bulkSave(settings.getHostInfo())(data, callback);
-			}
-		], function(err) {
-			console.log('Remove done', !err ? 'success' : err);
-			callback(err);
-		});
-	};
-}
-
-exports.remove = bulk( 'remove' );
-exports.update = bulk( 'update' );
-
-
-var child_process = require('child_process');
-var runCommand = function(commandStr, args, options, callback) {
-	var build = child_process.spawn(commandStr, args)
-	, result = '';
-	
-	parse = _.isFunction(options && options.parse) ? options.parse : function(x) {
-		
-		// not all stdout strings are well formed objects; 
-		// the client is looking for something like index 1 of '["log", "{"doc":{}}"]'
-		try {
-			return JSON.parse(x)[1];
-		}
-		catch(e) {
-			return {};
-		}
-	};
-	
-	// pipe child stdout to process.stdout; set encoding to text;
-	if (options && options.pipe) {
-		build.stdout.pipe(process.stdout, { end: false });
-		build.stdout.setEncoding('utf8');
-	}
-	
-	// capture stdout from child_process and look for the final 'doc' object; 
-	build.stdout.on('data', function(data) {				
-		result += data;
-	});
-	
-	build.stdout.on('end', function() {		
-		result = parse(result);		
-	});
-
-	// when command exits
-	build.on('exit', function (code) {
-		// execute the callback with the results from the workflow
-		callback(code || 0, result);
-	});
-	return build;
-};
-exports.runCommand = runCommand;
-
-var readRequest = function( settings, options, collection) {
-	var that = {} 
-	, totalSaved = 0
-	, id = _.uniqueId()
-	, timer = exports.timeStamp().start(id)
-	, read = function(callback, count) {
-		let self = this;
-		
-		if (options.request_timer) {
-			console.time(this.url);
-		}
-		request(_.clean({
-			url: this.url,
-			json: true,
-			method: this.method || 'GET',
-			body: this.method === 'POST' ? this.body : undefined,
-			timeout: options.timeout,
-			headers: this.headers
-		}), _.bind(function(err, response) {
-		
-			if (options.request_timer) {
-				console.timeEnd(this.url);
-			}
-			
-			if (err) {
-				if (response && response.statusCode && response.statusCode === 404) {
-					console.log(_.sprintf('[%s] error: "%s"', id, response.statusMessage));
-					return callback(null, {error: 404, reason: response.statusMessage});
-				}
-				if (!response) {
-					console.log(_.sprintf('[%s] error: "%s"', id, err.message));
-					return callback(null, {error:'empty_response', reason: err.message || 'empty_response'});
-				}
-				callback(null, err);
-			}
-			
-			// Service Unavailable, Too Many Connections
-			if (response && response.statusCode === 503) {
-				if (count === 10) {
-					console.log(_.sprintf('[%s] error: "too many retries"', id));
-					return callback({error: 'read_failed', reason: 'too_many_retries'});
-				}
-	
-				return _.wait((0.25 * count || 1), function() {
-					console.log(_.sprintf('[%s] fetch error: %s, retries (%d)', 
-						id, response.statusMessage || response.statusCode, count || 1));
-					read.call(self, callback, count ? count + 1 : 2);
-				});
-			}
-			
-			if (response && response.body) {
-				
-				// parse the results
-				return callback(null, this.parse( response.body, options ) );
-			}
-			callback(null, {error: 'read_failed', reason: 'missing_body'}); 					
-		}, this));
-	};
-	
-	that.read = function(query, callback) {
-		query = _.defaults(query || {}, {
-			parse: function(data) {
-				this.attributes = data;
-				return this.attributes;
-			},
-			toJSON: function() {
-				return this.attributes;
-			},
-			ok: true,
-			collection: this.collection,
-			destroy: _.bind(function() {
-				_.each(['ok','parse', 'attributes', 'toJSON', 'url'], function(key) {
-					delete this[key];
-				}, this);
-			}, query)
-		});
-		
-		let onRead = _.bind(function(err, response) {
-			if (response && !response.error && _.result(query, 'ok')) {
-				this.add( query.toJSON() );
-			}
-			query.destroy()
-			callback.apply(this);
-		}, this);
-		
-		if (_.isFunction(query.read)) {
-			query.read.call(query, onRead);
-		} else {
-			read.call(query, onRead);
-		}
-		return this;		
-	};
-	
-	that.collection = collection;
-	that.processed = collection.slice(0);
-	that.add = function( obj ) {
-		obj = _.isArray(obj) ? obj : [ obj ];
-		
-		// filter elements with no keys
-		obj = obj.filter(function(doc) { return _.keys(doc).length; });
-		
-		this.collection = this.collection.concat( obj );
-		return this;		
-	};
-	
-	that.reset = function() {
-		this.processed = this.processed.concat( this.collection
-			.filter(function(doc) { return typeof doc === 'object'; 
-		}).map(function(doc) {
-			return _.pick(doc, '_id', 'parseError');
-		}) );
-		this.collection.length = 0;
-	};
-	
-	that.toJSON = function() {
-		return this.collection.slice(0);
-	};
-	
-	that.ok = function() {
-		return !!this.collection.length;
-	};
-	
-	that.bulkReady = function() {
-		return (this.ok() && this.collection.length >= options.bucketSize)
-	};
-	
-	that.save = function(docs, callback) {
-		self = this;
-		
-		if (docs.length) {
-			totalSaved += docs.length;
-			console.log( _.template(this.message_template)({
-				module: options.module || 'pipeline',
-				id: id,
-				saving: docs.length,
-				total_saved: totalSaved,
-				elapsed: timer.time( id ),
-				docs_per_second: Math.round(totalSaved/(timer.time( id ))).toFixed(2),
-				memory: _.memory()
-			}) );
-		
-			// save the models;
-			return exports.bulkSave(settings, {silent: !!options.silent})(docs, function(err, response) {
-				if (!options.processed) self.processed.length = 0; 
-				self.onSave( docs, response );
-				callback(null, {total_processed: self.processed.length});
-			});
-		} 
-		callback(null, {total_processed: self.processed.length});
-	}
-	that.message_template = '[ pipeline ] [thread <%= id %>] Bulk saving (<%= saving %>), total saved (<%= total_saved %>), elapsed (<%= elapsed %>), docs/s (<%= docs_per_second %>), memory (<%= memory %>)';
-
-	// allow the user to inject these methods on the drain;
-	that.save = options && options.drain && options.drain.save || that.save;
-	that.onSave = options && options.drain && options.drain.onSave || function(){};
-	that.context = options;
-	return that;
-};
-
-
-var pipeline = function(settings) {
-	
-	var go = function(options) {
-		var threads
-		, chunks
-		, queue
-		, collection = []
-		, jobs = 0;
-		
-		options = _.defaults(options, {
-			source: readRequest,
-			threads: 1,
-			bucketSize: 1,
-			callback: function(){}
-		})
-		
-		var readReq = options.source( settings, options, collection )
-		var handleOne = function(query, callback) {
-			
-			// we re-use the same reqRequest / collection over and over for each operation on this thread.
-			// that way, we recycle memory without generating new collections every time.
-			readReq.read(query, function() {
-				let docs;
-				
-				jobs += 1;
-				if (options.job_status && !(jobs % 100)) console.log('[pipeline] info: jobs completed', jobs);
-				if (this.bulkReady()) {
-					docs = this.toJSON();
-					this.reset();
-					return readReq.save(docs, callback);
-				}
-				callback();
-			});
-		};
-		
-		queue = async.queue( handleOne, threads );
-		queue.drain = function() {
-			readReq.save( readReq.toJSON(), function(err, response) {
-				readReq.reset();
-				options.callback(null, readReq, response);
-			});
-		};
-		
-		if (options.queries.length) {
-			options.queries.forEach(function(query) {
-				queue.push( query, function(err, response) {
-					if (response && response.error) {
-						console.log('[pipeline] warning:', response.errror, response.reason);
-						err = _.pick(response, 'error', 'reason');
-					
-					}
+					}]
 				});
 			});
-		} else {
-			options.callback();
+			
+			// connect
+			c.connect( _.pick(config, 'host', 'password' ) );
+			return this;			
+		},
+		
+		get: function(ftpItem, next) {
+			var self = this;
+			
+			if (ftpItem.name.indexOf('.md5') !== -1) {
+				return process.nextTick( next );
+			}
+			
+			if (config.verbose) console.log('[FTP] info: downloading...', ftpItem.name);
+			this._c.get(ftpItem.name, function(err, stream) {
+				if (err) throw err;
+				stream
+				.once('close', function(err) {
+					self.downloaded.push( ftpItem.name );
+					next(err);
+				})
+				.pipe(fs.createWriteStream([config.tmp, ftpItem.name].join('/')));
+			});
+			return this;
+		},
+		
+		end: function() {
+			this._c.end();
 		}
+	}
+};
 
-	};
-	
-	return({
-		go: go
-	});
+module.exports = {
+	request: request,
+	command: runCommand,
+	Download: Download,
+	FTP: FTP,
+	ZIP: ZIP
 };
 
 
-exports.pipeline = pipeline;
+
 

@@ -1,17 +1,15 @@
 {
   "name": "async_utils",
   "version": "0.0.6",
-  "description": "Batch/pipeline utilities based on Async",
+  "description": "Request, child process, FTP, and ZIP wrappers.",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "repository": {
     "type": "git",
     "url": "git@github.com:rranauro/async_utils.git"
   },
   "keywords": [
-    "Async", "Workflow"
+    "Async",
+    "Workflow"
   ],
   "author": "Ron Ranauro",
   "license": "MIT",
@@ -20,15 +18,20 @@
   },
   "homepage": "https://github.com/rranauro/async_utils#readme",
   "dependencies": {
-      "async": "1.x",
-      "byline": "^5.0.0",
-      "fs": "0.0.1-security",
-      "ftp": "^0.3.10",
-      "jszip": "^3.1.5",
-      "moment": "^2.17.1",
-      "objtree": "git@github.com:rranauro/ObjTree.git",
-      "request": "^2.60.x",
-      "toolbelt": "git+https://github.com/rranauro/toolbelt.git",
-      "underscore": "^1.4.4"
+    "async": "1.x",
+    "byline": "^5.0.0",
+    "fs": "0.0.1-security",
+    "ftp": "^0.3.10",
+    "jszip": "^3.1.5",
+    "objtree": "git@github.com:rranauro/ObjTree.git",
+    "request": "^2.60.x",
+    "toolbelt": "git+https://github.com/rranauro/toolbelt.git",
+    "underscore": "^1.4.4"
+  },
+  "devDependencies": {
+    "mocha": "^6.1.4"
+  },
+  "scripts": {
+    "test": "mocha"
   }
 }
