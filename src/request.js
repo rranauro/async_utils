@@ -15,7 +15,10 @@ var request = function(url, opts) {
 				options = {};
 			}
 			
-			if (_.isFunction(options)) {
+			if (_.isFunction(options) && typeof endpoint === 'string') {
+				callback = options;
+				options = {};
+			} else if (_.isFunction(options) && typeof endpoint === 'object') {
 				callback = options;
 				options = endpoint;
 				endpoint = null;
@@ -25,6 +28,9 @@ var request = function(url, opts) {
 				callback = function(){};
 			}
 			
+			if (endpoint) {
+				endpoint = endpoint.charAt(0) === '/' ? endpoint.slice(1) : endpoint.slice(0);
+			}
 			url = !!endpoint ? [url, endpoint].join('/') : url;
 			if (options && options.query) {
 				url = url + '?' + require('querystring').stringify( options.query );
