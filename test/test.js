@@ -10,13 +10,6 @@ describe('request', function() {
 		});
 	});
 	
-	it('request google as string', function(done) {
-		util.request('https://www.google.com').get(function(err, response) {
-			assert.equal(typeof response, 'string');
-			_.wait(1, done);
-		});
-	});
-	
 	it('request google parseXML', function(done) {
 		util.request('https://www.google.com').get({parseXML:true}, function(err, response) {
 			assert.equal(typeof response.html, 'object');
@@ -52,14 +45,14 @@ describe('FTP', function() {
 	it('contents', function(done) {
 		this.timeout(0);
 		FTP.contents(function(err, response) {
-			assert.equal(response.manifest.files().length, 2);
+			assert.equal(response.files().length, 2);
 			done();
 		});
 	});
 	
 	it('get', function(done) {
 		this.timeout(0);
-		FTP.manifest.each(FTP.get, function(err, response) {
+		FTP.each(FTP.get, function(err, response) {
 			assert.equal(FTP.downloaded.length, 2);
 			done();
 		}, FTP);
@@ -67,7 +60,7 @@ describe('FTP', function() {
 	
 	it('gunzip', function(done) {
 		this.timeout(0);
-		FTP.manifest.unzipAll(function(err) {
+		FTP.unzipAll(null, function(err) {
 			assert.equal(err, null);
 			done();			
 		});
@@ -89,16 +82,15 @@ describe('FTP', function() {
 	it('readByLine', function(done) {
 		
 		this.timeout(0);
-		FTP.manifest.files()[0].readByLine(handler(), function(err, obj) {
+		FTP.files()[0].readByLine(handler(), function(err, item, obj) {
 			assert.equal(!!obj.count(), true);
 			done();
 		});
 	});
 	
 	it('cleanup', function(done) {
-		FTP.manifest.cleanup(function(err, response) {
+		FTP.cleanup(function(err, response) {
 			assert.equal(err, null);
-			FTP.end();
 			done();			
 		});
 	});
@@ -127,21 +119,21 @@ describe('ZIP', function() {
 	
 	it('unzip', function(done) {
 		this.timeout(0);
-		Stream.manifest.unzipAll(function(err) {
+		Stream.unzipAll(null, function(err) {
 			assert.equal(err, null);
 			done();			
 		});
 	});
 	
 	it('confirm', function(done) {		
-		util.command('ls', [(Stream.manifest[0] || {}).path], {pipe:true}, function(err, response) {
-			assert.equal( _.trim(response), (Stream.manifest[0] || {}).path);
+		util.command('ls', [(Stream.files()[0] || {}).path], {pipe:true}, function(err, response) {
+			assert.equal( _.trim(response), (Stream.files()[0] || {}).path);
 			done();
 		});
 	});
 	
 	it('cleanup', function(done) {
-		Stream.manifest.cleanup(function(err, response) {
+		Stream.cleanup(function(err, response) {
 			assert.equal(err, null);
 			done();			
 		});
