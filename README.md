@@ -209,7 +209,7 @@ Removes the uncompressed file from the file system.
 Parse an unzipped downloaded XML into a JSON formatted object. 
 
 #### download.readByLine(lineHandler, callback)
-Parse an unzipped downloaded file and call `lineHandler.line` for each line in the file with the text of the line as the sole argument. The `line` method has the logic to delimit files, add them to queues for later processing, etc. The final `callback` is issued with two arguments: an `error` or `null` as the first argument and the `lineHandler` object as the second argument. 
+Parse an unzipped downloaded file and call `lineHandler.line( line )` for each line in the file with the text of the line as the sole argument. The `line` method has the logic to delimit files, add them to queues for later processing, etc. The final `callback` is issued with two arguments: an `error` or `null` as the first argument and the `lineHandler` object as the second argument. 
 
 
 
