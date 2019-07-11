@@ -32,6 +32,8 @@ At the present, _baseline_ comprises 972 gzipped XML files. Each of these incorp
 
 Lets see how we can download PubMed in less than 100 lines of code using *async_utils* and Node.js.
 
+> Note: For illustration we limit our download to 5 archive files and our parser is only counting XML files. To download everything we just have to delete the `limit` from our configuration and use the XML file parser provided by `async_utils` to do real work.
+
 
 ```
 var util = require('../index');
