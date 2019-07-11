@@ -4,7 +4,7 @@ A library of wrapper objects to simplify downloading and streaming content from 
 A data source can be an FTP site or a .ZIP file located at a particular web address. One of the big challenges with data harvesting is processing large data sets while avoiding *out of memory* issues on the client. Similarly, data servers often limit the number of requests per second a client can make. Thus we need to respect these limitations and write workflows that are durable and can be restarted in case of failure during processing.
 
 ## Overview
-The library is encapsulates methods for *FTP* and *ZIP* file handling. An _FTP_ and _ZIP_ are wrapper functions with configurations for respective technologies.
+The library encapsulates methods for *FTP* and *ZIP* file handling. In this library, _FTP_ and _ZIP_ are wrapper functions with configurations for respective technologies.
 
 _FTP_: An object that takes a configuration object and sets up a connection to a remote FTP server. Supply a `/tmp` directory locally and a `path` on the remote FTP server, the object creates a manifest of files located in the remote ftp directory and the produces a `Download` object (see below) for each entry in the archive. The `Download` object can stream itself from from the server and unzip itself in place. Asynchronous `each` iterator methods control the level of concurrency we allow when requesting remote server resources and processing on our local machine.
 
