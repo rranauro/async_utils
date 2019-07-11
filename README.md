@@ -50,10 +50,65 @@ var FTP = util.FTP({
 	limit: 5
 });
 
+// async.auto provides control flow.
+async.auto({
+	contents: function(next) {
+		
+		// navigate to the directory specified by "path" in our configuration.
+		// capture the directory listing at that location and create a manifest
+		// attached to the FTP object.
+		FTP.contents(next);
+	},
+	
+	fetch: ['contents', function(next) {
+		
+		FTP.each(FTP.get, next, FTP);
+	}],
+	
+	unzip: ['fetch', function(next) {
+		
+		// FTP unzips each file in the manifest and calls a function
+		// to process the unzipped file. The context of the function 
+		// is the Download object 
+		FTP.unzipAll(function(callback) {
+			
+			// we can use "readByLine" to process the very large XML document
+			// produced by each unzipped file. The NLM package 30,000 discrete PubMed
+			// abstract documents in each download. If we try to parse XML in one shot
+			// we will run out of memory
+			
+			// Note: pubMedByLineHandler function is custom for each data source (see below). 
+			// The function must return an object with at least one method called `line`
+			// that takes a single argument, the next line from the parsed document.
+			this.readByLine(pubMedByLineHandler(), function(err, item, downloaded) {
+				
+				// downloaded is the object produced by byLineHandler.
+				// toJSON() has our array of articles downloaded and parsed from Pubmed
+				console.log('[download] info:', item.fname, downloaded.toJSON().length);
+				callback();
+			});
+		}, next);
+	}],
+	
+	cleanup: ['unzip', function(next) {
+		
+		// loop over uncompressed output files and remove.
+		FTP.cleanup(function(err) {
+			
+			// an "ls -l" on the /tmp directory should show no files from our download.
+			console.log('[example] info:', err ? err.message : 'Finished.');
+			next();
+		});
+	}]
+});
+
+```
+And the `pubMedByLineHandler` function:
+```
 var pubMedByLineHandler = function() {
 	var bigString = [];
 	var articles = [];
-    var toJson = new ObjTree();
+    	var toJson = new ObjTree();
    	toJson.force_array = ["MeshHeading", "DataBank", "AccessionNumber", "QualifierName", "AffiliationInfo"];	
 	
 	return {
@@ -82,54 +137,4 @@ var pubMedByLineHandler = function() {
 		}
 	}
 };
-
-// async.auto provides control flow.
-async.auto({
-	contents: function(next) {
-		
-		// navigate to the directory specified by "path" in our configuration.
-		// capture the directory listing at that location and create a manifest
-		// attached to the FTP object.
-		FTP.contents(next);
-	},
-	
-	fetch: ['contents', function(next) {
-		
-		FTP.each(FTP.get, next, FTP);
-	}],
-	
-	unzip: ['fetch', function(next) {
-		
-		// FTP unzips each file in the manifest and calls a function
-		// to process the unzipped file. The context of the function 
-		// is the Download object 
-		FTP.unzipAll(function(callback) {
-			
-			// we can use "readByLine" to process the very large XML document
-			// produced by each unzipped file. The NLM package 30,000 discrete PubMed
-			// abstract documents in each download. If we try to parse XML in one shot
-			// we will run out of memory
-			this.readByLine(pubMedByLineHandler(), function(err, item, downloaded) {
-				
-				// downloaded is the object produced by byLineHandler.
-				// toJSON() has our array of articles downloaded and parsed from Pubmed
-				console.log('[download] info:', item.fname, downloaded.toJSON().length);
-				callback();
-			});
-		}, next);
-	}],
-	
-	cleanup: ['unzip', function(next) {
-		
-		// loop over uncompressed output files and remove.
-		FTP.cleanup(function(err) {
-			
-			// an "ls -l" on the /tmp directory should show no files from our download.
-			console.log('[example] info:', err ? err.message : 'Finished.');
-			next();
-		});
-	}]
-});
-
 ```
-
