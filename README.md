@@ -51,6 +51,9 @@ var FTP = util.FTP({
 });
 
 // async.auto provides control flow.
+// async.auto executes functions asynchronously and in parallel, unless the function is wrapped
+// in an array. In that case, the string indices refer to dependent functions that must complete
+// before the supplied function can execute.
 async.auto({
 	contents: function(next) {
 		
@@ -62,6 +65,8 @@ async.auto({
 	
 	fetch: ['contents', function(next) {
 		
+		// Iterate over each entry in the FTP manifest and execute FTP.get
+		// on completion, call next() to advance the workflow.
 		FTP.each(FTP.get, next, FTP);
 	}],
 	
@@ -138,3 +143,58 @@ var pubMedByLineHandler = function() {
 	}
 };
 ```
+## API
+### FTP(config), ZIP(config)
+Instantiate a _FTP_ or _ZIP_ download object. Config parameters:
+
+- verbose: a boolean flag limits the number of progress messages during processing.
+- tmp: a string fully specific path on your local machine where to place downloaded files. Note: You must have write permission.
+- host: (FTP only) a string path on the remote FTP server.
+- password: (FTP only) a string password
+- path: (FTP only) a string path from the root of the FTP server where you want download
+- hostname: (ZIP only) a string path on the remote HTTP host.
+- fname: (ZIP only) a string file name to give the downloaded ZIP file.
+- concurrency: integer amount of parallelism to allow when downloading or processing each entry.
+- limit: integer max number of downloads to process (helpful for debugging).
+```
+// Example FTP config object
+{
+	verbose: true,
+	tmp: '/tmp',
+	host: 'ftp.ncbi.nlm.nih.gov',
+	password: 'ron@inciteadvisors.com',
+	path: 'pubmed/baseline',
+	concurrency: 2,
+	limit: 5
+}
+```
+####FTP.contents(response)
+Opens connection to the remote FTP server and navigates to the configured `path`. Creates a download object for each entry in the directory listed, the *manifest*. On completion executes `response`.
+
+####ZIP.contents(response)
+Reads an already downloaded ZIP file (see ZIP.get) and creates a *manifest* for each entry in the ZIP file.
+
+####FTP.get(response)
+Downloads an entry in the remote FTP archive to the local /tmp directory.
+
+####ZIP.get(response)
+Pipes the ZIP file at the remote location defined by `hostname` into a file named `fname` in the `tmp` directory on the local machine.
+
+####FTP.each(fN, response [, context]), ZIP.each(fn, response [, context])
+Iterates over each entry in the *manifest* and executes the supplied function `fN`. `fN` can be any function that takes two parameters: a `Download` object and a `callback`. Supply an optional `context` parameter to control the value of `this` when calling `fN`.
+
+> Note: FTP.each() will execute concurrently up to the limit specified by the value of `concurrency` configuation parameter.
+
+####FTP.unzipAll(response), ZIP.unzipAll(response)
+Iterates over each entry in the *manifest* and uncompresses the file in the /tmp directory replacing the .gz file with the uncompressed representation of the file. 
+
+> Note: FTP.unzip() will execute concurrently up to the limit specified by the value of `concurrency` configuation parameter.
+
+####FTP.cleanup(response), ZIP.cleanup(response)
+Iterates over each entry in the *manifest* and removes the file from the /tmp directory.
+
+### Download( object, parent )
+
+
+
+
