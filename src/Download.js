@@ -119,7 +119,7 @@ Download.prototype.readByLine = function(lineHandler, callback) {
 	});
 };
 
-Download.prototype.readXML = function(fname, options, callback) {
+Download.prototype.readXML = function(options, callback) {
 	if (typeof options === 'function') {
 		callback = options;
 		options = {};
@@ -259,7 +259,7 @@ DownloadObject.prototype.add = function(items) {
 	
 	if (items && items.files && this.protocol === 'zip') {
 		this._files = _.keys(items.files).map(function(file) {
-			return new Download( {fname: file, name: file, value: items.files[file]}, self);
+			return new Download( {fname: file, name: file}, self);
 		});
 		items._manifest = items.files;
 		delete items.files;
