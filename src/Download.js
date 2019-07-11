@@ -137,7 +137,7 @@ Download.prototype.readXML = function(fname, options, callback) {
 	});
 };
 
-var DownloadObjects = function( items, config ) {
+var DownloadObject = function( items, config ) {
 	var self = this;
 			
 	_.extend(this, _.defaults(config || {}, {
@@ -250,11 +250,11 @@ var DownloadObjects = function( items, config ) {
 			}			
 		}
 	}[config.protocol || 'zip']);
-	DownloadObjects.prototype.add.apply(this, arguments);
+	DownloadObject.prototype.add.apply(this, arguments);
 	return this;
 };
 
-DownloadObjects.prototype.add = function(items) {
+DownloadObject.prototype.add = function(items) {
 	var self = this;
 	
 	if (items && items.files && this.protocol === 'zip') {
@@ -271,8 +271,7 @@ DownloadObjects.prototype.add = function(items) {
 	return this;
 };
 
-
-DownloadObjects.prototype.files = function() {
+DownloadObject.prototype.files = function() {
 	if ({ftp:true}[this.protocol]) {
 		return this._files.filter(function(item) {
 			return !item.name.match(/.md5/) && !item.name.match(/.txt/);
@@ -281,17 +280,17 @@ DownloadObjects.prototype.files = function() {
 	return this._files.slice(0, this.limit);
 };
 
-DownloadObjects.prototype.reverse = function() {
+DownloadObject.prototype.reverse = function() {
 	this.files.reverse();
 	return this;
 };
 
-DownloadObjects.prototype.each = function(fN, callback, context) {	
-	async.eachLimit(DownloadObjects.prototype.files.apply(this), this.concurrency, _.bind(fN, context || this), callback);
+DownloadObject.prototype.each = function(fN, callback, context) {	
+	async.eachLimit(DownloadObject.prototype.files.apply(this), this.concurrency, _.bind(fN, context || this), callback);
 	return this;	
 };
 
-DownloadObjects.prototype.unzipAll = function(handler, callback) {
+DownloadObject.prototype.unzipAll = function(handler, callback) {
 	this.each(function(item, next) {
 		item.unzip(function(err) {
 			if (!err && handler) {
@@ -302,7 +301,7 @@ DownloadObjects.prototype.unzipAll = function(handler, callback) {
 	}, callback);
 };
 
-DownloadObjects.prototype.cleanup = function(callback) {
+DownloadObject.prototype.cleanup = function(callback) {
 	var self = this;
 	
 	this.each(function(item, next) {
@@ -318,17 +317,18 @@ DownloadObjects.prototype.cleanup = function(callback) {
 };
 
 var ZIP = function(config) {
-	config = _.defaults(config || {}, {protocol: 'zip'});
+	config = _.defaults(config || {}, {tmp: '/tmp', verbose: false, protocol: 'zip'});
 	config.zipname = [config.tmp || '/tmp', config.fname].join('/');
-	return new DownloadObjects(null, config);
+	return new DownloadObject(null, config);
 };
 
 var FTP = function(config) {
-	config = _.defaults(config || {}, {verbose: false, protocol: 'ftp', path: ''});
-	return new DownloadObjects([], config)
+	config = _.defaults(config || {}, {tmp: '/tmp', verbose: false, protocol: 'ftp', path: ''});
+	return new DownloadObject([], config)
 };
 
 module.exports = {
+	DownloadObject: DownloadObject,
 	Download: Download,
 	FTP: FTP,
 	ZIP: ZIP

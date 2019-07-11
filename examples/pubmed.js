@@ -59,6 +59,8 @@ async.auto({
 	
 	fetch: ['contents', function(next) {
 		
+		// Iterate over each entry in the FTP manifest and execute FTP.get
+		// on completion, call next() to advance the workflow.
 		FTP.each(FTP.get, next, FTP);
 	}],
 	
