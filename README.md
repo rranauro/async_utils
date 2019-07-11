@@ -10,7 +10,7 @@ _FTP_: An object that takes a configuration object and sets up a connection to a
 
 _ZIP_: An object that takes a configuration object and sets up a connection to a remote HTTP server. Supply a `/tmp` directory locally and a `path` on the remote FTP server, the object streams the remote `.zip` locally before reading the manifest of files in the ZIP archive and the produces a `Download` object (see below) for each entry in the archive. The `Download` object can unzip itself in place. Asynchronous `each` iterator methods control the level of concurrency we allow when requesting remote server resources and processing on our local machine.
 
-For both _ZIP_ and _FTP_ the configuration object allows specification of a `concurrency` parameter that defines the number of concurrent jobs to process at any one time.
+For both _ZIP_ and _FTP_ the configuration object provides iteration methods and allows specification of a `concurrency` parameter that defines the number of concurrent jobs to process at any one time.
 
 _Download_: _DownloadObject_ maintains and array of _Download_ objects, one for each entry in a ZIP file or remote FTP archive.  The _Download_ object has methods for downloading, unzipping, and cleaning up. Once data is ready _Download_ provides methods for line oriented stream processing or parsing XML concurrently up to a limit of concurrent processing as defined by the `concurrency` parameter.
 
