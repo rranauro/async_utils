@@ -168,33 +168,48 @@ Instantiate a _FTP_ or _ZIP_ download object. Config parameters:
 	limit: 5
 }
 ```
-####FTP.contents(response)
+#### FTP.contents(response)
 Opens connection to the remote FTP server and navigates to the configured `path`. Creates a download object for each entry in the directory listed, the *manifest*. On completion executes `response`.
 
-####ZIP.contents(response)
+#### ZIP.contents(response)
 Reads an already downloaded ZIP file (see ZIP.get) and creates a *manifest* for each entry in the ZIP file.
 
-####FTP.get(response)
+#### FTP.get(response)
 Downloads an entry in the remote FTP archive to the local /tmp directory.
 
-####ZIP.get(response)
+#### ZIP.get(response)
 Pipes the ZIP file at the remote location defined by `hostname` into a file named `fname` in the `tmp` directory on the local machine.
 
-####FTP.each(fN, response [, context]), ZIP.each(fn, response [, context])
+#### FTP.each(fN, response [, context]), ZIP.each(fn, response [, context])
 Iterates over each entry in the *manifest* and executes the supplied function `fN`. `fN` can be any function that takes two parameters: a `Download` object and a `callback`. Supply an optional `context` parameter to control the value of `this` when calling `fN`.
 
 > Note: FTP.each() will execute concurrently up to the limit specified by the value of `concurrency` configuation parameter.
 
-####FTP.unzipAll(response), ZIP.unzipAll(response)
+#### FTP.unzipAll(response), ZIP.unzipAll(response)
 Iterates over each entry in the *manifest* and uncompresses the file in the /tmp directory replacing the .gz file with the uncompressed representation of the file. 
 
 > Note: FTP.unzip() will execute concurrently up to the limit specified by the value of `concurrency` configuation parameter.
 
-####FTP.cleanup(response), ZIP.cleanup(response)
+#### FTP.cleanup(response), ZIP.cleanup(response)
 Iterates over each entry in the *manifest* and removes the file from the /tmp directory.
 
-### Download( object, parent )
+#### FTP.files(), ZIP.files()
+Returns an array of `Download` objects, the *manifest*.
 
+### new Download( obj, parent )
+This object is created by ZIP or FTP for each entry in the manifest. `obj` is an object with a name property `.gz` extension for FTP or just the name of the target file for ZIP. `parent` is the parent object ZIP or FTP and its configuration. 
+
+#### download.unzip(callback)
+Uses the correct algorithm to decompress the file and issues the `callback` on completion.
+
+#### download.cleanup(callback)
+Removes the uncompressed file from the file system.
+
+#### download.readXML([options,] callback)
+Parse an unzipped downloaded XML into a JSON formatted object. 
+
+#### download.readByLine(lineHandler, callback)
+Parse an unzipped downloaded file and call `lineHandler.line` for each line in the file with the text of the line as the sole argument. The `line` method has the logic to delimit files, add them to queues for later processing, etc. The final `callback` is issued with two arguments: an `error` or `null` as the first argument and the `lineHandler` object as the second argument. 
 
 
 
