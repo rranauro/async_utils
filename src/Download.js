@@ -230,7 +230,10 @@ var DownloadObject = function( items, config ) {
 				var self = this;
 				var file = fs.createWriteStream( config.zipname );
 			
-				node_request.get([config.hostname, config.path].join('/'), function(response) {
+				node_request.get({
+					uri: [config.hostname, config.path].join('/'),
+					encoding: null
+				}, function(response) {
 					if (config.verbose) console.log('[ZIP] info: Piping...');
 				})
 				.pipe( file )
