@@ -39,9 +39,9 @@ Download.prototype.gunzip = function(callback) {
 	
 	if (this.name.split(/.gz/).length < 2) {
 		console.log('[FTP] info: skipping...', this.name);
-		setTimeout(100, function() {
+		setTimeout(function() {
 			callback({code: 'unprocessable_entity', status: 403, message: 'Not a ".gz" file.'});
-		});
+		}, 100);
 	} else {
 		fs.createReadStream( self.path )
 		.pipe( zlib.createGunzip() )
