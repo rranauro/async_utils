@@ -39,16 +39,18 @@ Download.prototype.gunzip = function(callback) {
 	
 	if (this.name.split(/.gz/).length < 2) {
 		console.log('[FTP] info: skipping...', this.name);
-		return callback();
-	}
-	
-	fs.createReadStream( self.path )
-	.pipe( zlib.createGunzip() )
-	.pipe( fs.createWriteStream( self.path.replace('.gz', '') )
+		setTimeout(100, function() {
+			callback({code: 'unprocessable_entity', status: 403, message: 'Not a ".gz" file.'});
+		});
+	} else {
+		fs.createReadStream( self.path )
+		.pipe( zlib.createGunzip() )
+		.pipe( fs.createWriteStream( self.path.replace('.gz', '') )
 
-		.on('close', function() {
-			fs.unlink( self.path, callback);
-		}) );
+			.on('close', function() {
+				fs.unlink( self.path, callback);
+			}) );		
+	}
 	return this;
 };
 
