@@ -179,7 +179,7 @@ var DownloadObject = function( items, config ) {
 					});		
 				});
 				
-				_.wait(2000 * Math.random(), function() {
+				_.wait(2 * Math.random(), function() {
 					c.connect( _.pick(config, 'host', 'password' ) );					
 				});
 			
