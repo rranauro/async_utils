@@ -19,6 +19,8 @@ var zlib = require('zlib');
 
 
 var Download = function(obj, parent) {
+	parent = _.defaults(parent || {}, {protocol: 'ftp', tmp: '/tmp'});
+	
 	_.extend(this, obj);
 	this.path = [parent.tmp || '/tmp', this.name].join('/');
 	if (!this.fname && this.name) {
