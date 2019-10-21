@@ -159,9 +159,10 @@ var DownloadObject = function( items, config ) {
 				var c = new Ftp();
 				
 				c.on('error', function(err) {
-					console.log('[FTP] error:', err.code);
+					console.log('[FTP] error:', err && err.code || err);
 					response(err);
 				});
+				
 				c.on('ready', function() {
 					async.auto({
 						cwd: function(next) {
@@ -191,13 +192,16 @@ var DownloadObject = function( items, config ) {
 
 				if (config.verbose) console.log('[FTP] info: ', config.host, config.path);
 				this.open(function(connection) {
-					if (connection && connection.code) {
-						return response(connection);
+					
+					if (connection && connection.list) {
+						return connection.list(function(err, ftplist) {
+							connection.end();
+							response(err, self.add( ftplist ));
+						});							
 					}
-					connection.list(function(err, ftplist) {
-						connection.end();
-						response(err, self.add( ftplist ));
-					});			
+					
+					// return an error
+					response(connection);
 				});
 				return this;			
 			},
