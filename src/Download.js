@@ -23,6 +23,10 @@ var Download = function(obj, parent) {
 	
 	_.extend(this, obj);
 	this.path = [parent.tmp || '/tmp', this.name].join('/');
+	this.directory = this.path.split('/').length > 1
+	? this.path.split('/').slice(0, this.path.split('/').length-1).join('/')
+	: '';
+	
 	if (!this.fname && this.name) {
 		this.fname = this.name.replace('.gz', '')
 	}
@@ -54,35 +58,41 @@ Download.prototype.gunzip = function(callback) {
 	return this;
 };
 
-Download.prototype.zipunzip = function(callback) {
+Download.prototype._zipunzip = function(callback) {
 	var self = this;
 	
 	// read a zip file
-	fs.readFile(this.zipname, function(err, data) {
-	    if (err) throw err;
-		
-	    JSZip.loadAsync(data).then(function (zip) {
-			
-			zip
-			.file( self.name )
-			.nodeStream()
-			.pipe(fs.createWriteStream( self.path ))
-			.on('finish', function () {
-			    // JSZip generates a readable stream with a "end" event,
-			    // but is piped here in a writable stream which emits a "finish" event.
-			    console.log('[ZIP/unzip] info: saved.', self.path);
-				callback(null, self);
-			})
-			.on('error', function(err) {
-				console.log('[ZIP/unzip] error:', err);
-				callback(err);
-			})
-	    })
-		.catch(function(err) {
-			console.log('[ZIP/JSZip] error:', err);
-			callback(err);
-		})
-	});
+	this.JSZip
+	.file( self.name )
+	.nodeStream()
+	.pipe(fs.createWriteStream( self.path ))
+	.on('finish', function () {
+	    // JSZip generates a readable stream with a "end" event,
+	    // but is piped here in a writable stream which emits a "finish" event.
+	    if (self.verbose) console.log('[ZIP/unzip] info: saved.', self.path);
+		self.unzipped = true;
+		callback(null, self);
+	})
+	.on('error', function(err) {
+		console.log('[ZIP/unzip] error:', err);
+		callback(err);
+	})
+	return this;
+};
+
+Download.prototype.zipunzip = function(callback) {
+	var self = this;
+	
+	if (this.directory) {
+		fs.mkdir(this.directory, function(err) {
+			if (err && err.code !== "EEXIST") {
+				throw new Error('[Download] fatal: "mkdir" failed not existing.')
+			}
+			self._zipunzip(callback);					
+		});	
+	} else {
+		self._zipunzip(callback);		
+	}
 	return this;
 };
 
@@ -105,7 +115,10 @@ Download.prototype.cleanup = function(callback) {
 		});	
 	};
 	
-	return cleanupOne(this.path.replace('.gz', ''), callback);
+	if (this.unzipped) {
+		return cleanupOne(this.path.replace('.gz', ''), callback);		
+	}
+	process.nextTick(callback);
 };
 
 Download.prototype.byLine = function() {
@@ -147,7 +160,7 @@ var DownloadObject = function( items, config ) {
 	_.extend(this, _.defaults(config || {}, {
 		tmp: '/tmp', 
 		limit: undefined, 
-		downloaded:[], 
+		downloaded: config.protocol == 'ftp' ? [] : false, 
 		verbose:false,
 		concurrency: 1
 	}), {
@@ -235,20 +248,35 @@ var DownloadObject = function( items, config ) {
 			zipname: config.zipname,
 			contents: function(callback) {
 				var self = this;
-						
-				// read a zip file
-				fs.readFile(this.zipname, function(err, data) {
-				    if (err) throw new Error(err.message);
 				
-				    JSZip.loadAsync(data).then(function (zip) {
-						return callback(null, self.add( zip ));
-				    });
+				async.auto({
+					fetch: function(next) {
+						self.get(next);
+					},
+					handle: ['fetch', function(next, data) {
+						
+						// read a zip file
+						fs.readFile(self.zipname, function(err, data) {
+						    if (err) throw new Error(err.message);
+				
+						    JSZip.loadAsync(data).then(function (zip) {
+								return callback(null, self.add( zip ));
+						    });
+						});						
+					}]
 				});
 			},
 			get: function(callback) {
+				
+				if (this.downloaded) {
+					_.wait(1, function() {
+						callback(null, this);
+					}, this);
+					return this;
+				}
+				
 				var self = this;
 				var file = fs.createWriteStream( config.zipname );
-			
 				node_request.get({
 					uri: [config.hostname, config.path].join('/'),
 					encoding: null
@@ -264,6 +292,7 @@ var DownloadObject = function( items, config ) {
 				file.on('finish', function() {
 					file.close(function() {
 						if (config.verbose) console.log('[ZIP] info: Finished Piping.');
+						self.downloaded = true;
 						callback(null, self);
 					}); // close() is async, call cb after close completes.
 				});
@@ -276,17 +305,21 @@ var DownloadObject = function( items, config ) {
 	return this;
 };
 
-DownloadObject.prototype.add = function(items) {
+DownloadObject.prototype.add = function(zipObject) {
 	var self = this;
 	
-	if (items && items.files && this.protocol === 'zip') {
-		this._files = _.keys(items.files).map(function(file) {
-			return new Download( {fname: file, name: file}, self);
+	if (zipObject && zipObject.files && this.protocol === 'zip') {
+		this._files = _.keys(zipObject.files).map(function(file) {
+			return new Download( {
+				fname: _.last(file.split('/')), 
+				name: file, 
+				JSZip: zipObject,
+				verbose: self.verbose
+			}, self);
 		});
-		items._manifest = items.files;
-		delete items.files;
-	} else if (items && this.protocol === 'ftp') {
-		this._files = (items || []).map(function(item) {
+		this._index = _.firstIndexByKey(this._files, 'fname');
+	} else if (zipObject && this.protocol === 'ftp') {
+		this._files = (zipObject || []).map(function(item) {
 			return new Download( item, self );
 		});
 	}
@@ -300,6 +333,10 @@ DownloadObject.prototype.files = function() {
 		}).slice(0, this.limit);		
 	}
 	return this._files.slice(0, this.limit);
+};
+
+DownloadObject.prototype.length = function() {
+	return this.files().length;
 };
 
 DownloadObject.prototype.reverse = function() {

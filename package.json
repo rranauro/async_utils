@@ -1,6 +1,6 @@
 {
   "name": "async_utils",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Request, child process, FTP, and ZIP wrappers.",
   "main": "index.js",
   "repository": {
