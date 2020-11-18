@@ -31,10 +31,14 @@ var Download = function(obj, parent) {
 		this.fname = this.name.replace('.gz', '')
 	}
 	this.protocol = parent.protocol;
-	this._connection = parent;
 	if ({zip: true}[this.protocol]) {
 		this.zipname = parent.zipname;
 	}
+	return this;
+};
+
+Download.prototype.unlink = function() {
+	delete this.zipObject;
 	return this;
 };
 
@@ -58,19 +62,21 @@ Download.prototype.gunzip = function(callback) {
 	return this;
 };
 
-Download.prototype._zipunzip = function(callback) {
+const _zipunzip = function(callback) {
 	var self = this;
 	
+	var writable = fs.createWriteStream( self.path );
 	// read a zip file
 	this.JSZip
 	.file( self.name )
 	.nodeStream()
-	.pipe(fs.createWriteStream( self.path ))
+	.pipe( writable )
 	.on('finish', function () {
 	    // JSZip generates a readable stream with a "end" event,
 	    // but is piped here in a writable stream which emits a "finish" event.
 	    if (self.verbose) console.log('[ZIP/unzip] info: saved.', self.path);
 		self.unzipped = true;
+		writable.end();
 		callback(null, self);
 	})
 	.on('error', function(err) {
@@ -83,15 +89,22 @@ Download.prototype._zipunzip = function(callback) {
 Download.prototype.zipunzip = function(callback) {
 	var self = this;
 	
-	if (this.directory) {
-		fs.mkdir(this.directory, function(err) {
-			if (err && err.code !== "EEXIST") {
-				throw new Error('[Download] fatal: "mkdir" failed not existing.')
-			}
-			self._zipunzip(callback);					
-		});	
+	if (this.inflate) {
+		if (this.directory) {
+			fs.mkdir(this.directory, function(err) {
+				if (err && err.code !== "EEXIST") {
+					throw new Error('[Download] fatal: "mkdir" failed not existing.')
+				}
+				_zipunzip.call(self, callback);					
+			});	
+		} else {
+			_zipunzip.call(self, callback);		
+		}		
 	} else {
-		self._zipunzip(callback);		
+		this.JSZip.file(this.name).async("string").then(function (data) {
+			self.unzipped = true;
+			callback(null, data);
+		}, callback);		
 	}
 	return this;
 };
@@ -115,9 +128,10 @@ Download.prototype.cleanup = function(callback) {
 		});	
 	};
 	
-	if (this.unzipped) {
+	if (this.unzipped && this.inflated) {
 		return cleanupOne(this.path.replace('.gz', ''), callback);		
 	}
+	// delete this.JSZip.files[this.name]
 	process.nextTick(callback);
 };
 
@@ -162,7 +176,8 @@ var DownloadObject = function( items, config ) {
 		limit: undefined, 
 		downloaded: config.protocol == 'ftp' ? [] : false, 
 		verbose:false,
-		concurrency: 1
+		concurrency: 1,
+		inflate: true
 	}), {
 		
 		// use the 'protocol' value (ftp or zip) to decode this object for the parameters we want.
@@ -305,17 +320,22 @@ var DownloadObject = function( items, config ) {
 	return this;
 };
 
+DownloadObject.prototype.addOne = function(file, zipObject) {
+	return new Download( {
+		fname: _.last(file.split('/')), 
+		name: file, 
+		JSZip: zipObject,
+		verbose: this.verbose,
+		inflate: this.inflate
+	}, this);
+};
+
 DownloadObject.prototype.add = function(zipObject) {
 	var self = this;
 	
 	if (zipObject && zipObject.files && this.protocol === 'zip') {
 		this._files = _.keys(zipObject.files).map(function(file) {
-			return new Download( {
-				fname: _.last(file.split('/')), 
-				name: file, 
-				JSZip: zipObject,
-				verbose: self.verbose
-			}, self);
+			return self.addOne(file, zipObject);
 		});
 		this._index = _.firstIndexByKey(this._files, 'fname');
 	} else if (zipObject && this.protocol === 'ftp') {
