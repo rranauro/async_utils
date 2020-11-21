@@ -74,7 +74,7 @@ const _zipunzip = function(callback) {
 	.on('finish', function () {
 	    // JSZip generates a readable stream with a "end" event,
 	    // but is piped here in a writable stream which emits a "finish" event.
-	    if (self.verbose) console.log('[ZIP/unzip] info: saved.', self.path);
+	    if (self.verbose) console.log('[ZIP/unzip] info: saved.', self.name);
 		self.unzipped = true;
 		writable.end();
 		callback(null, self);
@@ -128,7 +128,7 @@ Download.prototype.cleanup = function(callback) {
 		});	
 	};
 	
-	if (this.unzipped && this.inflated) {
+	if (this.unzipped && this.inflate) {
 		return cleanupOne(this.path.replace('.gz', ''), callback);		
 	}
 	// delete this.JSZip.files[this.name]
