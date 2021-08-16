@@ -5,7 +5,7 @@
   "main": "index.js",
   "repository": {
     "type": "git",
-    "url": "git@github.com:rranauro/async_utils.git"
+    "url": "git@github.com:assaydepot/async_utils.git"
   },
   "keywords": [
     "Async",
@@ -14,18 +14,18 @@
   "author": "Ron Ranauro",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/rranauro/async_utils/issues"
+    "url": "https://github.com/assaydepot/async_utils/issues"
   },
-  "homepage": "https://github.com/rranauro/async_utils#readme",
+  "homepage": "https://github.com/assaydepot/async_utils#readme",
   "dependencies": {
     "async": "1.x",
     "byline": "^5.0.0",
     "fs": "0.0.1-security",
     "ftp": "^0.3.10",
     "jszip": "^3.1.5",
-    "objtree": "git@github.com:rranauro/ObjTree.git",
+    "objtree": "git@github.com:assaydepot/ObjTree.git",
     "request": "^2.60.x",
-    "toolbelt": "git+https://github.com/rranauro/toolbelt.git",
+    "toolbelt": "git+https://github.com/assaydepot/toolbelt.git",
     "underscore": "^1.4.4"
   },
   "devDependencies": {
