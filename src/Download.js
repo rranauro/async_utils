@@ -398,10 +398,6 @@ DownloadObject.prototype.cleanup = function(callback) {
       
   		self._files = {};
       self._index = {}
-       _.keys(zipObject.files).map(function(file) {
-  			return self.addOne(file, zipObject);
-  		});
-  		this._index = _.firstIndexByKey(this._files, 'fname');
 			return fs.unlink( self.zipname, callback );
 		}
 		callback(null);
