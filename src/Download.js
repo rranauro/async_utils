@@ -386,7 +386,7 @@ DownloadObject.prototype.unzipAll = function(handler, callback) {
 	}, callback);
 };
 
-DownloadObject.prototype.cleanup = function(callback) {
+DownloadObject.prototype.cleanup = function(callback, keep) {
 	var self = this;
 	
 	this.each(function(item, next) {
@@ -398,7 +398,7 @@ DownloadObject.prototype.cleanup = function(callback) {
       
   		self._files = {};
       self._index = {}
-			return fs.unlink( self.zipname, callback );
+			if (!keep) return fs.unlink( self.zipname, callback );
 		}
 		callback(null);
 	});
