@@ -171,7 +171,7 @@ Download.prototype.readXML = function(options, callback) {
 var DownloadObject = function( items, config ) {
 	var self = this;
 			
-	_.extend(this, _.defaults(config || {}, {
+	config = _.extend({}, _.defaults(config || {}, {
 		tmp: '/tmp', 
 		limit: undefined, 
 		downloaded: config.protocol == 'ftp' ? [] : false, 
@@ -316,7 +316,13 @@ var DownloadObject = function( items, config ) {
 			}			
 		}
 	}[config.protocol || 'zip']);
-	DownloadObject.prototype.add.apply(this, arguments);
+  _.each(config, function(value, key) {
+    this[key] = value;
+  }, this);
+  
+  if (items && items.length) {
+    DownloadObject.prototype.add.call(this, items);
+  }
 	return this;
 };
 
@@ -389,6 +395,13 @@ DownloadObject.prototype.cleanup = function(callback) {
 		if (err) return callback(err);
 		
 		if ({zip: true}[self.protocol]) {
+      
+  		self._files = {};
+      self._index = {}
+       _.keys(zipObject.files).map(function(file) {
+  			return self.addOne(file, zipObject);
+  		});
+  		this._index = _.firstIndexByKey(this._files, 'fname');
 			return fs.unlink( self.zipname, callback );
 		}
 		callback(null);

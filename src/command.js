@@ -29,9 +29,19 @@ module.exports = function(commandStr, args, options, callback) {
 	child.stdout.on('end', function() {		
 		result = parse(result);		
 	});
+	
+	child.on('error', function() {
+		console.log('child error', arguments);
+		callback.apply(null, arguments.slice(0));
+	});
 
 	// when command exits
 	child.on('exit', function (code) {
+		// execute the callback with the results from the workflow
+		callback(code || 0, result);
+	});
+	
+	child.on('close', function (code) {
 		// execute the callback with the results from the workflow
 		callback(code || 0, result);
 	});
