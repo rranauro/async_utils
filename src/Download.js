@@ -5,19 +5,6 @@ var async = require('async');
 var ObjTree = require('objtree');
 var fs = module.require('fs');
 
-// https://github.com/jahewson/node-byline
-var byLine = require('byline');
-
-// https://stuk.github.io/jszip/
-var JSZip = require("jszip");
-
-// https://github.com/mscdex/node-ftp
-var Ftp = require('ftp');
-
-// zip library used with ftp download.
-var zlib = require('zlib');
-
-
 var Download = function(obj, parent) {
 	parent = _.defaults(parent || {}, {protocol: 'ftp', tmp: '/tmp'});
 	
@@ -43,6 +30,8 @@ Download.prototype.unlink = function() {
 };
 
 Download.prototype.gunzip = function(callback) {
+  // zip library used with ftp download.
+  var zlib = require('zlib');
 	var self = this;
 	
 	if (this.name.split(/.gz/).length < 2) {
@@ -136,6 +125,9 @@ Download.prototype.cleanup = function(callback) {
 };
 
 Download.prototype.byLine = function() {
+  // https://github.com/jahewson/node-byline
+  var byLine = require('byline');
+  
 	return byLine( fs.createReadStream(this.path.replace('.gz', ''), { encoding: 'utf8' }) );
 };
 
@@ -184,6 +176,8 @@ var DownloadObject = function( items, config ) {
 		ftp: {
 			protocol: 'ftp',
 			open: function(response) {
+        // https://github.com/mscdex/node-ftp
+        var Ftp = require('ftp');
 				var c = new Ftp();
 				
 				c.on('error', function(err) {
@@ -263,6 +257,9 @@ var DownloadObject = function( items, config ) {
 			zipname: config.zipname,
 			contents: function(callback) {
 				var self = this;
+        
+        // https://stuk.github.io/jszip/
+        var JSZip = require("jszip");
 				
 				async.auto({
 					fetch: function(next) {
@@ -274,7 +271,7 @@ var DownloadObject = function( items, config ) {
 						fs.readFile(self.zipname, function(err, data) {
 						    if (err) throw new Error(err.message);
 				
-						    JSZip.loadAsync(data).then(function (zip) {
+						    new JSZip().loadAsync(data).then(function (zip) {
 								return callback(null, self.add( zip ));
 						    });
 						});						
