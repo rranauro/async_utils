@@ -120,7 +120,8 @@ Download.prototype.cleanup = function(callback) {
 	if (this.unzipped && this.inflate) {
 		return cleanupOne(this.path.replace('.gz', ''), callback);		
 	}
-	// delete this.JSZip.files[this.name]
+	delete this.JSZip.files[this.name];
+  delete this.JSZip;
 	process.nextTick(callback);
 };
 
@@ -175,15 +176,16 @@ var protocol_methods = {
 			});
 			
 			c.on('ready', function() {
+        let self = this;
 				async.auto({
 					cwd: function(next) {
-						c.cwd(config.path, next);
+						c.cwd(self.path, next);
 					},
 					pwd: ['cwd', function(next) {
 						c.pwd(next);
 					}],
 					response: ['pwd', function(next, data) {
-						if (data.pwd.slice(1) !== config.path) {
+						if (data.pwd.slice(1) !== self.path) {
 							throw new Error('Unable to connect, PWD Failed.');
 						}
 						response( c );
@@ -192,8 +194,8 @@ var protocol_methods = {
 			});
 			
 			_.wait(2 * Math.random(), function() {
-				c.connect( _.pick(config, 'host', 'password' ) );					
-			});
+				c.connect( _.pick(this, 'host', 'password' ) );					
+			}, this);
 		
 			return this;
 		},
@@ -201,7 +203,7 @@ var protocol_methods = {
 			var self = this;
 			var c = new Ftp();
 
-			if (config.verbose) console.log('[FTP] info: ', config.host, config.path);
+			if (self.verbose) console.log('[FTP] info: ', self.host, self.path);
 			this.open(function(connection) {
 				
 				if (connection && connection.list) {
@@ -220,12 +222,12 @@ var protocol_methods = {
 		get: function(ftpItem, next) {
 			var self = this;
 			
-			if (config.verbose) console.log('[FTP] info: downloading...', ftpItem.name);
+			if (self.verbose) console.log('[FTP] info: downloading...', ftpItem.name);
 			this.open(function(connection) {
 				connection.get(ftpItem.name, function(err, stream) {
 					if (err) {
 						connection.end();
-						if (config.verbose) console.log('[FTP] error: streaming...', err.message);							
+						if (self.verbose) console.log('[FTP] error: streaming...', err.message);							
 						return next(err);
 					};
 					
@@ -275,7 +277,7 @@ var protocol_methods = {
 			}
 			
 			var self = this;
-			var file = fs.createWriteStream( config.zipname );
+			var file = fs.createWriteStream( self.zipname );
 			node_request.get({
 				uri: [this.hostname, this.path].join('/'),
 				encoding: null
@@ -290,7 +292,7 @@ var protocol_methods = {
 
 			file.on('finish', function() {
 				file.close(function() {
-					if (config.verbose) console.log('[ZIP] info: Finished Piping.');
+					if (self.verbose) console.log('[ZIP] info: Finished Piping.');
 					self.downloaded = true;
 					callback(null, self);
 				}); // close() is async, call cb after close completes.
@@ -401,7 +403,7 @@ DownloadObject.prototype.cleanup = function(callback, keep) {
       self._index = {}
 			if (!keep) return fs.unlink( self.zipname, callback );
 		}
-		callback(null);
+		process.nextTick(callback);
 	});
 };
 
