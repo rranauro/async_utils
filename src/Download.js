@@ -25,7 +25,7 @@ var Download = function(obj, parent) {
 };
 
 Download.prototype.unlink = function() {
-	delete this.zipObject;
+	delete this.JSZip;
 	return this;
 };
 
@@ -160,162 +160,166 @@ Download.prototype.readXML = function(options, callback) {
 	});
 };
 
-var DownloadObject = function( items, config ) {
-	var self = this;
+var protocol_methods = {
+		
+	// use the 'protocol' value (ftp or zip) to decode.
+	ftp: {
+		open: function(response) {
+      // https://github.com/mscdex/node-ftp
+      var Ftp = require('ftp');
+			var c = new Ftp();
 			
-	config = _.extend({}, _.defaults(config || {}, {
+			c.on('error', function(err) {
+				console.log('[FTP] error:', err && err.code || err);
+				response(err);
+			});
+			
+			c.on('ready', function() {
+				async.auto({
+					cwd: function(next) {
+						c.cwd(config.path, next);
+					},
+					pwd: ['cwd', function(next) {
+						c.pwd(next);
+					}],
+					response: ['pwd', function(next, data) {
+						if (data.pwd.slice(1) !== config.path) {
+							throw new Error('Unable to connect, PWD Failed.');
+						}
+						response( c );
+					}]
+				});		
+			});
+			
+			_.wait(2 * Math.random(), function() {
+				c.connect( _.pick(config, 'host', 'password' ) );					
+			});
+		
+			return this;
+		},
+		contents: function(response) {
+			var self = this;
+			var c = new Ftp();
+
+			if (config.verbose) console.log('[FTP] info: ', config.host, config.path);
+			this.open(function(connection) {
+				
+				if (connection && connection.list) {
+					return connection.list(function(err, ftplist) {
+						connection.end();
+						response(err, self.add( ftplist ));
+					});							
+				}
+				
+				// return an error
+				response(connection);
+			});
+			return this;			
+		},
+	
+		get: function(ftpItem, next) {
+			var self = this;
+			
+			if (config.verbose) console.log('[FTP] info: downloading...', ftpItem.name);
+			this.open(function(connection) {
+				connection.get(ftpItem.name, function(err, stream) {
+					if (err) {
+						connection.end();
+						if (config.verbose) console.log('[FTP] error: streaming...', err.message);							
+						return next(err);
+					};
+					
+					stream
+					.once('close', function(err) {
+						self.downloaded.push( ftpItem.name );
+						connection.end();
+						next(err);
+					})
+					.pipe(fs.createWriteStream( ftpItem.path ));
+				});					
+			});
+			return this;
+		}		
+	},
+	zip: {
+
+		contents: function(callback) {
+			var self = this;
+      
+      // https://stuk.github.io/jszip/
+      var JSZip = require("jszip");
+			
+			async.auto({
+				fetch: function(next) {
+					self.get(next);
+				},
+				handle: ['fetch', function(next, data) {
+					
+					// read a zip file
+					fs.readFile(self.zipname, function(err, data) {
+					    if (err) throw new Error(err.message);
+			
+					    new JSZip().loadAsync(data).then(function (zip) {
+							  return callback(null, self.add( zip ));
+					    });
+					});						
+				}]
+			});
+		},
+		get: function(callback) {
+			if (this.downloaded) {
+				_.wait(1, function() {
+					callback(null, this);
+				}, this);
+				return this;
+			}
+			
+			var self = this;
+			var file = fs.createWriteStream( config.zipname );
+			node_request.get({
+				uri: [this.hostname, this.path].join('/'),
+				encoding: null
+			}, function(response) {
+				if (self.verbose) console.log('[ZIP] info: Piping...');
+			})
+			.pipe( file )
+			.on('error', function(err) {
+				console.log('[ZIP] error:', err.message);
+				callback(err);
+			});
+
+			file.on('finish', function() {
+				file.close(function() {
+					if (config.verbose) console.log('[ZIP] info: Finished Piping.');
+					self.downloaded = true;
+					callback(null, self);
+				}); // close() is async, call cb after close completes.
+			});
+
+			return this;
+		}			
+	}
+};
+
+var DownloadObject = function( items, config ) {
+			
+	config = _.chain(config || {}).defaults({
 		tmp: '/tmp', 
 		limit: undefined, 
 		downloaded: config.protocol == 'ftp' ? [] : false, 
 		verbose:false,
 		concurrency: 1,
-		inflate: true
-	}), {
-		
-		// use the 'protocol' value (ftp or zip) to decode this object for the parameters we want.
-		ftp: {
-			protocol: 'ftp',
-			open: function(response) {
-        // https://github.com/mscdex/node-ftp
-        var Ftp = require('ftp');
-				var c = new Ftp();
-				
-				c.on('error', function(err) {
-					console.log('[FTP] error:', err && err.code || err);
-					response(err);
-				});
-				
-				c.on('ready', function() {
-					async.auto({
-						cwd: function(next) {
-							c.cwd(config.path, next);
-						},
-						pwd: ['cwd', function(next) {
-							c.pwd(next);
-						}],
-						response: ['pwd', function(next, data) {
-							if (data.pwd.slice(1) !== config.path) {
-								throw new Error('Unable to connect, PWD Failed.');
-							}
-							response( c );
-						}]
-					});		
-				});
-				
-				_.wait(2 * Math.random(), function() {
-					c.connect( _.pick(config, 'host', 'password' ) );					
-				});
-			
-				return this;
-			},
-			contents: function(response) {
-				var self = this;
-				var c = new Ftp();
-
-				if (config.verbose) console.log('[FTP] info: ', config.host, config.path);
-				this.open(function(connection) {
-					
-					if (connection && connection.list) {
-						return connection.list(function(err, ftplist) {
-							connection.end();
-							response(err, self.add( ftplist ));
-						});							
-					}
-					
-					// return an error
-					response(connection);
-				});
-				return this;			
-			},
-		
-			get: function(ftpItem, next) {
-				var self = this;
-				
-				if (config.verbose) console.log('[FTP] info: downloading...', ftpItem.name);
-				this.open(function(connection) {
-					connection.get(ftpItem.name, function(err, stream) {
-						if (err) {
-							connection.end();
-							if (config.verbose) console.log('[FTP] error: streaming...', err.message);							
-							return next(err);
-						};
-						
-						stream
-						.once('close', function(err) {
-							self.downloaded.push( ftpItem.name );
-							connection.end();
-							next(err);
-						})
-						.pipe(fs.createWriteStream( ftpItem.path ));
-					});					
-				});
-				return this;
-			}		
-		},
-		zip: {
-			protocol: 'zip',
-			zipname: config.zipname,
-			contents: function(callback) {
-				var self = this;
-        
-        // https://stuk.github.io/jszip/
-        var JSZip = require("jszip");
-				
-				async.auto({
-					fetch: function(next) {
-						self.get(next);
-					},
-					handle: ['fetch', function(next, data) {
-						
-						// read a zip file
-						fs.readFile(self.zipname, function(err, data) {
-						    if (err) throw new Error(err.message);
-				
-						    new JSZip().loadAsync(data).then(function (zip) {
-								return callback(null, self.add( zip ));
-						    });
-						});						
-					}]
-				});
-			},
-			get: function(callback) {
-				
-				if (this.downloaded) {
-					_.wait(1, function() {
-						callback(null, this);
-					}, this);
-					return this;
-				}
-				
-				var self = this;
-				var file = fs.createWriteStream( config.zipname );
-				node_request.get({
-					uri: [config.hostname, config.path].join('/'),
-					encoding: null
-				}, function(response) {
-					if (config.verbose) console.log('[ZIP] info: Piping...');
-				})
-				.pipe( file )
-				.on('error', function(err) {
-					console.log('[ZIP] error:', err.message);
-					callback(err);
-				});
-
-				file.on('finish', function() {
-					file.close(function() {
-						if (config.verbose) console.log('[ZIP] info: Finished Piping.');
-						self.downloaded = true;
-						callback(null, self);
-					}); // close() is async, call cb after close completes.
-				});
-
-				return this;
-			}			
-		}
-	}[config.protocol || 'zip']);
+		inflate: true,
+    protocol: 'zip'
+	}).clone().value();
+  
   _.each(config, function(value, key) {
     this[key] = value;
   }, this);
+  
+  _.each(protocol_methods[config.protocol], function(value, key) {
+    DownloadObject.prototype[key] = value;
+  });
   
   if (items && items.length) {
     DownloadObject.prototype.add.call(this, items);
