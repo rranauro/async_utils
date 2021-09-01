@@ -5,11 +5,16 @@ var async = require('async');
 var ObjTree = require('objtree');
 var fs = module.require('fs');
 
-var Download = function(obj, parent) {
-	parent = _.defaults(parent || {}, {protocol: 'ftp', tmp: '/tmp'});
-	
-	_.extend(this, obj);
-	this.path = [parent.tmp || '/tmp', this.name].join('/');
+var Download = function() {
+	return Download.prototype.initialize.apply(this, arguments);
+};
+
+Download.prototype.initialize = function(obj, parent) {
+  _.keys(obj).forEach(function(k) { this[k] = obj[k]; }, this);
+  this.JSZip = parent.JSZip;
+  this.protocol = parent.protocole || 'zip';
+  this.tmp = parent.tmp || '/tmp';
+	this.path = [this.tmp || '/tmp', this.name].join('/');
 	this.directory = this.path.split('/').length > 1
 	? this.path.split('/').slice(0, this.path.split('/').length-1).join('/')
 	: '';
@@ -17,11 +22,11 @@ var Download = function(obj, parent) {
 	if (!this.fname && this.name) {
 		this.fname = this.name.replace('.gz', '')
 	}
-	this.protocol = parent.protocol;
+
 	if ({zip: true}[this.protocol]) {
 		this.zipname = parent.zipname;
 	}
-	return this;
+  return this;
 };
 
 Download.prototype.unlink = function() {
@@ -121,7 +126,9 @@ Download.prototype.cleanup = function(callback) {
 		return cleanupOne(this.path.replace('.gz', ''), callback);		
 	}
 	delete this.JSZip.files[this.name];
-  delete this.JSZip;
+  Object.keys(this).forEach(function(key) {
+    delete this[key];
+  }, this);
 	process.nextTick(callback);
 };
 
