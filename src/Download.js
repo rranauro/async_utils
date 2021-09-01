@@ -11,8 +11,8 @@ var Download = function() {
 
 Download.prototype.initialize = function(obj, parent) {
   _.keys(obj).forEach(function(k) { this[k] = obj[k]; }, this);
-  this.JSZip = parent.JSZip;
-  this.protocol = parent.protocole || 'zip';
+  this.protocol = parent.protocol || 'zip';
+  this.JSZip = this.protocol === 'zip' ? parent : undefined;
   this.tmp = parent.tmp || '/tmp';
 	this.path = [this.tmp || '/tmp', this.name].join('/');
 	this.directory = this.path.split('/').length > 1
