@@ -27,7 +27,7 @@
     "objtree": "git@github.com:rranauro/ObjTree.git",
     "request": "^2.60.x",
     "toolbelt": "git@github.com:rranauro/toolbelt.git",
-    "underscore": "^1.4.4"
+    "underscore": "^1.12.1"
   },
   "devDependencies": {
     "mocha": "^6.1.4"
