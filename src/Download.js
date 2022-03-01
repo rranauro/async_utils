@@ -5,6 +5,54 @@ var async = require('async');
 var ObjTree = require('objtree');
 var fs = module.require('fs');
 
+// https://github.com/mscdex/node-ftp
+var Ftp = require('ftp');
+
+// https://stuk.github.io/jszip/
+var JSZip = require("jszip");
+
+// https://github.com/antelle/node-stream-zip#callback-api
+var StreamZip = require('node-stream-zip');  
+
+var StreamZipObject = function(path) {
+  this._path = path;
+  return this;
+};
+
+StreamZipObject.prototype.close = function() {
+  if (this._zipStream) { this._zipStream.close(); }
+  delete this._zipStream;
+  return this;
+};
+
+StreamZipObject.prototype.open = function(callback) {
+  const zip = new StreamZip({ file: this._path });
+  zip.on('ready', function() {
+    this._zipStream = zip;
+    this.files = zip.entries();
+    callback(null, this);
+  }.bind(this));
+  return this;
+};
+
+StreamZipObject.prototype.file = function(fname) {
+  return this.files[fname];
+};
+
+StreamZipObject.prototype.zipunzip = function(name, callback) {
+  let output = "";
+  
+  this._zipStream.stream(name, (err, stm) => {
+    stm.on('data', function(data) {
+      output += data;
+    });
+    
+    stm.on('end', function() {
+      callback(null, output);
+    });
+  });
+};
+
 var Download = function() {
 	return Download.prototype.initialize.apply(this, arguments);
 };
@@ -81,6 +129,10 @@ const _zipunzip = function(callback) {
 
 Download.prototype.zipunzip = function(callback) {
 	var self = this;
+  
+  if (this.JSZip && this.JSZip instanceof StreamZipObject) {
+    return this.JSZip.zipunzip(this.name, callback);
+  }
 	
 	if (this.inflate) {
 		if (this.directory) {
@@ -172,8 +224,6 @@ var protocol_methods = {
 	// use the 'protocol' value (ftp or zip) to decode.
 	ftp: {
 		open: function(response) {
-      // https://github.com/mscdex/node-ftp
-      var Ftp = require('ftp');
 			var c = new Ftp();
 			
 			c.on('error', function(err) {
@@ -253,9 +303,6 @@ var protocol_methods = {
 
 		contents: function(callback) {
 			var self = this;
-      
-      // https://stuk.github.io/jszip/
-      var JSZip = require("jszip");
 			
 			async.auto({
 				fetch: function(next) {
@@ -306,10 +353,60 @@ var protocol_methods = {
 
 			return this;
 		}			
+	},
+	stream: {
+
+		contents: function(callback) {
+			var self = this;
+			
+			async.auto({
+				fetch: function(next) {
+					self.get(next);
+				},
+				handle: ['fetch', function(next, data) {
+          
+          new StreamZipObject(self.zipname).open(function(err, zip) {
+            callback(null, self.add( zip ));            
+          });
+				}]
+			});
+		},
+		get: function(callback) {
+			if (this.downloaded) {
+				_.wait(0.01, function() {
+					callback(null, this);
+				}, this);
+				return this;
+			}
+			
+			var self = this;
+			var file = fs.createWriteStream( self.zipname );
+			node_request.get({
+				uri: [this.hostname, this.path].join('/'),
+				encoding: null
+			}, function(response) {
+				if (self.verbose) console.log('[ZIP] info: Piping...');
+			})
+			.pipe( file )
+			.on('error', function(err) {
+				console.log('[ZIP] error:', err.message);
+				callback(err);
+			});
+
+			file.on('finish', function() {
+				file.close(function() {
+					if (self.verbose) console.log('[ZIP] info: Finished Piping.');
+					self.downloaded = true;
+					callback(null, self);
+				}); // close() is async, call cb after close completes.
+			});
+
+			return this;
+		}			
 	}
 };
 
-var DownloadObject = function( items, config ) {
+var DownloadObject = function( items, config, handler ) {
 			
 	config = _.chain(config || {}).defaults({
 		tmp: '/tmp', 
@@ -325,9 +422,9 @@ var DownloadObject = function( items, config ) {
     this[key] = value;
   }, this);
   
-  _.each(protocol_methods[config.protocol], function(value, key) {
-    DownloadObject.prototype[key] = value;
-  });
+  _.each(protocol_methods[handler], function(value, key) {
+    this[key] = _.bind(value, this);
+  }, this);
   
   if (items && items.length) {
     DownloadObject.prototype.add.call(this, items);
@@ -348,16 +445,19 @@ DownloadObject.prototype.addOne = function(file, zipObject) {
 DownloadObject.prototype.add = function(zipObject) {
 	var self = this;
 	
-	if (zipObject && zipObject.files && this.protocol === 'zip') {
-		this._files = _.keys(zipObject.files).map(function(file) {
-			return self.addOne(file, zipObject);
-		});
-		this._index = _.firstIndexByKey(this._files, 'fname');
-	} else if (zipObject && this.protocol === 'ftp') {
-		this._files = (zipObject || []).map(function(item) {
-			return new Download( item, self );
-		});
-	}
+  if (zipObject) {
+    if (zipObject.files && this.protocol === 'zip') {
+  		this._files = _.keys(zipObject.files).map(function(file) {
+  			return self.addOne(file, zipObject);
+  		});
+  		this._index = _.firstIndexByKey(this._files, 'fname');
+  	} else if (this.protocol === 'ftp') {
+  		this._files = (zipObject || []).map(function(item) {
+  			return new Download( item, self );
+  		});
+  	}
+  }
+
 	return this;
 };
 
@@ -395,40 +495,54 @@ DownloadObject.prototype.unzipAll = function(handler, callback) {
 	}, callback);
 };
 
+DownloadObject.prototype.unzip = function(fname, callback) {
+  if (!this._index[fname]) return process.nextTick( callback );
+  this._index[fname].unzip(callback);
+};
+
 DownloadObject.prototype.cleanup = function(callback, keep) {
 	var self = this;
 	
 	this.each(function(item, next) {
 		item.cleanup(next);
 	}, function(err) {
-		if (err) return callback(err);
 		
 		if ({zip: true}[self.protocol]) {
       
   		self._files = {};
-      self._index = {}
+      self._index = {};
+      if (self._zipStream) {
+        self._zipStream.close();
+      }
 			if (!keep) return fs.unlink( self.zipname, callback );
 		}
 		process.nextTick(callback);
 	});
 };
 
+var Stream = function(config) {
+	config = _.defaults(config || {}, {tmp: '/tmp', verbose: false, protocol: 'zip'});
+	config.zipname = [config.tmp || '/tmp', config.fname].join('/');
+	return new DownloadObject(null, config, 'stream');
+};
+
 var ZIP = function(config) {
 	config = _.defaults(config || {}, {tmp: '/tmp', verbose: false, protocol: 'zip'});
 	config.zipname = [config.tmp || '/tmp', config.fname].join('/');
-	return new DownloadObject(null, config);
+	return new DownloadObject(null, config, 'zip');
 };
 
 var FTP = function(config) {
 	config = _.defaults(config || {}, {tmp: '/tmp', verbose: false, protocol: 'ftp', path: ''});
-	return new DownloadObject([], config)
+	return new DownloadObject([], config, 'ftp')
 };
 
 module.exports = {
 	DownloadObject: DownloadObject,
 	Download: Download,
 	FTP: FTP,
-	ZIP: ZIP
+	ZIP: ZIP,
+	Stream: Stream
 };
 
 

@@ -3,7 +3,8 @@ module.exports = {
 	command: require('./src/command'),
 	Download: require('./src/Download').Download,
 	FTP: require('./src/Download').FTP,
-	ZIP: require('./src/Download').ZIP
+	ZIP: require('./src/Download').ZIP,
+	Stream: require('./src/Download').Stream
 };
 
 

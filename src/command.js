@@ -38,7 +38,7 @@ module.exports = function(commandStr, args, options, callback) {
 	// when command exits
 	child.on('exit', function (code) {
 		// execute the callback with the results from the workflow
-		callback(code || 0, result);
+		// callback(code || 0, result);
 	});
 	
 	child.on('close', function (code) {

@@ -96,10 +96,45 @@ describe('FTP', function() {
 	});
 });
 
+describe('Stream', function() {
+	var Stream = util.Stream({
+    hostname: 'https://www.fda.gov', 
+    fname: 'BMIS.zip', 
+    path: 'media/130141/download',
+    downloaded: false
+  });
+	
+	it('contents', function(done) {
+		this.timeout(0);
+		Stream.contents(function(err, stream) {
+			assert.equal(!!err, false);
+			assert.equal(stream.length(), 2);
+			assert.equal(!!stream._index['bmis.txt'], true);
+			done();
+		});
+	});
+  
+  it('unzip', function(done) {
+		this.timeout(5000);
+		Stream.unzip('bmis.txt', function(err, response) {
+			assert.equal(typeof response, 'string');
+			done();
+		});
+  });
+  
+  it('cleanup', function(done) {
+		Stream._index['bmis.txt'].cleanup(function(err) {
+      console.log(err)
+			assert.equal(typeof err, 'undefined');
+			done();
+		});
+  });
+});
+
 describe('ZIP', function() {
 	var old_link = 'downloads/Drugs/InformationOnDrugs/UCM135169.zip'
 
-	var Stream = util.ZIP({hostname: 'https://www.fda.gov', fname: 'BMIS.zip', path: 'media/128517/download'});
+	var Stream = util.ZIP({hostname: 'https://www.fda.gov', fname: 'BMIS.zip', path: 'media/130141/download'});
 	
 	it('download', function(done) {
 		this.timeout(0);
