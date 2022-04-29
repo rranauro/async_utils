@@ -18,7 +18,7 @@
   },
   "homepage": "git@github.com:assaydepot/async_utils#readme",
   "dependencies": {
-    "async": "1.x",
+    "async": "2.x",
     "byline": "^5.0.0",
     "fs": "0.0.1-security",
     "ftp": "^0.3.10",
